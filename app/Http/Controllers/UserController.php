@@ -4,6 +4,8 @@ namespace App\Http\Controllers;
 
 use App\Models\User;
 use Spatie\Permission\Models\Role;
+use App\Http\Requests\StoreUserRequest;
+use App\Http\Requests\UpdateUserRequest;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Auth;
@@ -14,37 +16,59 @@ class UserController extends Controller
     {
         /** @var User $authUser */
         $authUser = Auth::user();
+        
+        // Iniciamos la consulta cargando los roles
+        $query = User::with('roles')
+                    ->whereNull('conductor_id'); // <--- ESTA LÍNEA FILTRA A LOS CONDUCTORES
 
-        $users = User::where('empresa_id', $authUser->empresa_id)
-            ->with('roles')
-            ->get();
+        // Si no es súper admin, filtramos por empresa
+        if (!$authUser->hasRole('SUPER_ADMIN')) {
+            $query->where('empresa_id', $authUser->empresa_id);
+        }
+
+        $users = $query->get()->map(function($user) {
+            $prefijo = 'e' . $user->empresa_id . '_';
+            $user->roles_limpios = $user->roles->map(function($role) use ($prefijo) {
+                return strtoupper(str_replace($prefijo, '', $role->name));
+            })->implode(', ');
+            return $user;
+        });
 
         return view('admin.users.index', compact('users'));
     }
 
-    public function create()
+    public function create(Request $request)
     {
-        $roles = Role::where('name', '!=', 'SUPER_ADMIN')->get();
+        /** @var User $authUser */
+        $authUser = Auth::user();
+
+        $empresaId = $request->query('empresa_id') ?? $authUser->empresa_id;
+        $prefijo = 'e' . $empresaId . '_';
+
+        $roles = Role::where(function ($q) use ($prefijo) {
+                $q->where('name', 'LIKE', $prefijo . '%')
+                  ->orWhere('name', 'conductor');
+            })
+            ->get()
+            ->map(function ($role) use ($prefijo) {
+                $role->nombre_limpio = strtoupper(str_replace($prefijo, '', $role->name));
+                return $role;
+            });
+
         return view('admin.users.create', compact('roles'));
     }
 
-    public function store(Request $request)
+    public function store(StoreUserRequest $request)
     {
-        $request->validate([
-            'name'     => 'required|string|max:255',
-            'email'    => 'required|email|unique:users,email',
-            'password' => 'required|min:8|confirmed',
-            'role'     => 'required'
-        ], [
-            'email.unique' => 'Este correo ya está registrado en el sistema.',
-            'password.confirmed' => 'Las contraseñas no coinciden.'
-        ]);
+        $request->validated();
 
         /** @var User $authUser */
         $authUser = Auth::user();
 
+        $empresaId = $request->empresa_id ?? $authUser->empresa_id;
+
         $user = User::create([
-            'empresa_id' => $authUser->empresa_id,
+            'empresa_id' => $empresaId,
             'name'       => $request->name,
             'email'      => $request->email,
             'password'   => Hash::make($request->password),
@@ -59,16 +83,29 @@ class UserController extends Controller
 
     public function edit(User $user)
     {
-        if ($user->empresa_id !== Auth::user()->empresa_id) abort(403);
+        /** @var User $authUser */
+        $authUser = Auth::user();
+        if ($user->empresa_id !== $authUser->empresa_id) abort(403);
 
-        $roles = Role::where('name', '!=', 'SUPER_ADMIN')->get();
+        $prefijo = 'e' . $authUser->empresa_id . '_';
+
+        $roles = Role::where(function ($q) use ($prefijo) {
+                $q->where('name', 'LIKE', $prefijo . '%')
+                  ->orWhere('name', 'conductor');
+            })
+            ->get()
+            ->map(function ($role) use ($prefijo) {
+                $role->nombre_limpio = strtoupper(str_replace($prefijo, '', $role->name));
+                return $role;
+            });
+
         return view('admin.users.edit', compact('user', 'roles'));
     }
 
     /**
      * Actualiza el usuario asegurando el scope de empresa.
      */
-    public function update(Request $request, User $user)
+    public function update(UpdateUserRequest $request, User $user)
     {
         // 1. Seguridad: Verificar que el usuario pertenezca a la misma empresa
         /** @var User $authUser */
@@ -76,15 +113,7 @@ class UserController extends Controller
         if ($user->empresa_id !== $authUser->empresa_id) abort(403);
 
         // 2. Validación
-        $request->validate([
-            'name'     => 'required|string|max:255',
-            'email'    => 'required|email|unique:users,email,' . $user->id,
-            'password' => 'nullable|min:8|confirmed', // Nullable para que sea opcional
-            'role'     => 'required'
-        ], [
-            'email.unique' => 'Este correo ya pertenece a otro usuario.',
-            'password.confirmed' => 'Las contraseñas no coinciden.'
-        ]);
+        $request->validated();
 
         // 3. Preparar datos para actualizar
         $data = [
@@ -124,6 +153,13 @@ class UserController extends Controller
         if ($user->hasRole('SUPER_ADMIN') && !$authUser->hasRole('SUPER_ADMIN')) {
             return redirect()->route('users.index')
                 ->with('error', 'No puedes eliminar a un Súper Administrador.');
+        }
+
+        // Evitar eliminar al admin de la empresa
+        $prefijo = 'e' . $authUser->empresa_id . '_';
+        if ($user->hasRole($prefijo . 'ADMIN')) {
+            return redirect()->route('users.index')
+                ->with('error', 'No se puede eliminar el usuario administrador principal de la empresa.');
         }
 
         $userName = $user->name;

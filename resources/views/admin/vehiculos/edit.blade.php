@@ -1,160 +1,179 @@
 @extends('layouts.admin')
 
+@section('back_url', route('vehiculos.index'))
+
 @section('content')
-    <div class="card" style="max-width: 1000px; margin: 0 auto;">
-        <div class="card-header">
-            <div class="card-title">Editar Unidad: {{ $vehiculo->placa }}</div>
-        </div>
-        <div class="card-body">
-            {{-- Bloque de errores de validación --}}
-            @if ($errors->any())
-                <div
-                    style="background: #fee2e2; color: #dc2626; padding: 15px; border-radius: 10px; margin-bottom: 20px; border: 1px solid #fecaca; font-size: 13px;">
-                    <ul style="margin: 0; padding-left: 20px;">
-                        @foreach ($errors->all() as $error)
-                            <li>{{ $error }}</li>
-                        @endforeach
-                    </ul>
-                </div>
-            @endif
+    <div class="panel">
+        <div class="card" style="max-width: 1000px; margin: 0 auto;">
+            <div class="card-header">
+                <div class="card-title">Editar Unidad: {{ $vehiculo->placa }}</div>
+            </div>
+            <div class="card-body">
 
-            <form action="{{ route('vehiculos.update', $vehiculo->id) }}" method="POST">
-                @csrf
-                @method('PUT') {{-- Importante para procesar la actualización --}}
-
-                <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px;">
-
-                    {{-- Identificación --}}
-                    <div class="form-group">
-                        <label>Placa</label>
-                        <input type="text" name="placa" value="{{ old('placa', $vehiculo->placa) }}"
-                            class="form-control" placeholder="ABC-123" required>
+                {{-- BLOQUE DE ERRORES --}}
+                @if ($errors->any())
+                    <div class="alert warning">
+                        <ul style="margin: 0; padding-left: 20px;">
+                            @foreach ($errors->all() as $error)
+                                <li>{{ $error }}</li>
+                            @endforeach
+                        </ul>
                     </div>
+                @endif
 
-                    <div class="form-group">
-                        <label>Número de Padron</label>
-                        <input type="number" name="numero_flota" value="{{ old('numero_flota', $vehiculo->numero_flota) }}"
-                            class="form-control">
-                    </div>
+                <form action="{{ route('vehiculos.update', $vehiculo->id) }}" method="POST">
+                    @csrf
+                    @method('PUT')
 
-                    <div class="form-group">
-                        <label>Estado</label>
-                        <select name="estado" class="form-control" required>
-                            <option value="activo" {{ old('estado', $vehiculo->estado) == 'activo' ? 'selected' : '' }}>🟢
-                                Activo (Genera Tributo)</option>
-                            <option value="inactivo" {{ old('estado', $vehiculo->estado) == 'inactivo' ? 'selected' : '' }}>
-                                🔴 Inactivo</option>
-                            <option value="mantenimiento"
-                                {{ old('estado', $vehiculo->estado) == 'mantenimiento' ? 'selected' : '' }}>🟠 Mantenimiento
-                            </option>
-                            <option value="sin_salir"
-                                {{ old('estado', $vehiculo->estado) == 'sin_salir' ? 'selected' : '' }}>🟡 Sin Salir
-                            </option>
-                        </select>
-                    </div>
+                    <div class="form-grid" style="grid-template-columns: repeat(3, 1fr);">
 
-                    {{-- Detalles Técnicos --}}
-                    <div class="form-group">
-                        <label>Marca</label>
-                        <input type="text" name="marca" value="{{ old('marca', $vehiculo->marca) }}"
-                            class="form-control">
-                    </div>
+                        {{-- SECCIÓN: IDENTIFICACIÓN --}}
+                        <div class="field">
+                            <label for="placa">Placa</label>
+                            <input type="text" id="placa" name="placa" value="{{ old('placa', $vehiculo->placa) }}"
+                                required maxlength="8"
+                                oninput="this.value = this.value.toUpperCase().replace(/[^A-Z0-9-]/g, '')"
+                                placeholder="ABC-123">
+                        </div>
 
-                    <div class="form-group">
-                        <label>Modelo</label>
-                        <input type="text" name="modelo" value="{{ old('modelo', $vehiculo->modelo) }}"
-                            class="form-control">
-                    </div>
+                        <div class="field">
+                            <label for="numero_flota">Número de Padrón</label>
+                            <input type="number" id="numero_flota" name="numero_flota"
+                                value="{{ old('numero_flota', $vehiculo->numero_flota) }}" placeholder="Ej: 105">
+                        </div>
 
-                    <div class="form-group">
-                        <label>Color</label>
-                        <input type="text" name="color" value="{{ old('color', $vehiculo->color) }}"
-                            class="form-control" placeholder="Ej: Blanco">
-                    </div>
-
-                    <div class="form-group">
-                        <label>Año</label>
-                        <input type="number" name="anio" value="{{ old('anio', $vehiculo->anio) }}"
-                            class="form-control">
-                    </div>
-
-                    {{-- Vencimientos --}}
-                    <div class="form-group">
-                        <label>SOAT Vencimiento</label>
-                        <input type="date" name="soat_vence" value="{{ old('soat_vence', $vehiculo->soat_vence) }}"
-                            class="form-control">
-                    </div>
-
-                    <div class="form-group">
-                        <label>Revisión Técnica Vence</label>
-                        <input type="date" name="rev_tecnica_vence"
-                            value="{{ old('rev_tecnica_vence', $vehiculo->rev_tecnica_vence) }}" class="form-control">
-                    </div>
-
-                    <div class="form-group">
-                        <label>Tarjeta Propiedad Vence</label>
-                        <input type="date" name="tarjeta_prop_vence"
-                            value="{{ old('tarjeta_prop_vence', $vehiculo->tarjeta_prop_vence) }}" class="form-control">
-                    </div>
-
-                    {{-- Asignaciones --}}
-                    <div class="form-group">
-                        <label>Propietario</label>
-                        <select name="propietario_id" class="form-control">
-                            <option value="">-- Seleccionar --</option>
-                            @foreach ($propietarios as $p)
-                                <option value="{{ $p->id }}"
-                                    {{ old('propietario_id', $vehiculo->propietario_id) == $p->id ? 'selected' : '' }}>
-                                    {{ $p->nombre }} {{ $p->apellidos }}
+                        <div class="field">
+                            <label for="estado">Estado Operativo</label>
+                            <select name="estado" id="estado" required>
+                                <option value="activo" {{ old('estado', $vehiculo->estado) == 'activo' ? 'selected' : '' }}>
+                                    Activo</option>
+                                <option value="inactivo"
+                                    {{ old('estado', $vehiculo->estado) == 'inactivo' ? 'selected' : '' }}>Inactivo</option>
+                                <option value="mantenimiento"
+                                    {{ old('estado', $vehiculo->estado) == 'mantenimiento' ? 'selected' : '' }}>En
+                                    Mantenimiento</option>
+                                <option value="sin_salir"
+                                    {{ old('estado', $vehiculo->estado) == 'sin_salir' ? 'selected' : '' }}>Sin Salir
                                 </option>
-                            @endforeach
-                        </select>
-                    </div>
+                            </select>
+                        </div>
 
-                    <div class="form-group">
-                        <label>Conductor</label>
-                        <select name="conductor_id" class="form-control">
-                            <option value="">-- Seleccionar --</option>
-                            @foreach ($conductores as $c)
-                                <option value="{{ $c->id }}"
-                                    {{ old('conductor_id', $vehiculo->conductor_id) == $c->id ? 'selected' : '' }}>
-                                    {{ $c->nombre }} {{ $c->apellidos }}
-                                </option>
-                            @endforeach
-                        </select>
-                    </div>
+                        {{-- SECCIÓN: DETALLES TÉCNICOS --}}
+                        <div class="field">
+                            <label for="marca">Marca</label>
+                            <input type="text" id="marca" name="marca"
+                                value="{{ old('marca', $vehiculo->marca) }}">
+                        </div>
 
-                    {{-- Rutas (Muchos a Muchos) --}}
-                    <div class="form-group" style="grid-column: span 3;">
-                        <label style="font-weight: 700; display: block; margin-bottom: 10px;">Rutas Asignadas:</label>
-                        <div
-                            style="display: flex; flex-wrap: wrap; gap: 15px; background: #f8fafc; padding: 15px; border-radius: 8px; border: 1px solid #e2e8f0;">
-                            @foreach ($rutas as $ruta)
-                                <label
-                                    style="display: flex; align-items: center; gap: 8px; font-size: 13px; cursor: pointer;">
-                                    <input type="checkbox" name="rutas[]" value="{{ $ruta->id }}" {{-- Lógica para marcar las rutas que ya tiene el vehículo --}}
-                                        @if (is_array(old('rutas', $rutasAsignadas ?? $vehiculo->rutas->pluck('id')->toArray())) &&
-                                                in_array($ruta->id, old('rutas', $rutasAsignadas ?? $vehiculo->rutas->pluck('id')->toArray()))) checked @endif>
-                                    {{ $ruta->nombre }}
-                                </label>
-                            @endforeach
+                        <div class="field">
+                            <label for="modelo">Modelo</label>
+                            <input type="text" id="modelo" name="modelo"
+                                value="{{ old('modelo', $vehiculo->modelo) }}">
+                        </div>
+
+                        <div class="field">
+                            <label for="anio">Año de Fabricación</label>
+                            <select name="anio" id="anio" required>
+                                @php
+                                    $anioActual = date('Y');
+                                    $anioSeleccionado = old('anio', $vehiculo->anio);
+                                @endphp
+                                @for ($i = $anioActual + 1; $i >= 1990; $i--)
+                                    <option value="{{ $i }}" {{ $anioSeleccionado == $i ? 'selected' : '' }}>
+                                        {{ $i }}</option>
+                                @endfor
+                            </select>
+                        </div>
+
+                        {{-- SECCIÓN: DOCUMENTACIÓN (CORREGIDA CON FORMATO YYYY-MM-DD) --}}
+                        <div class="field">
+                            <label for="soat_vence">Vencimiento SOAT</label>
+                            <input type="date" id="soat_vence" name="soat_vence"
+                                value="{{ old('soat_vence', $vehiculo->soat_vence ? \Carbon\Carbon::parse($vehiculo->soat_vence)->format('Y-m-d') : '') }}">
+                        </div>
+
+                        <div class="field">
+                            <label for="rev_tecnica_vence">Revisión Técnica Vence</label>
+                            <input type="date" id="rev_tecnica_vence" name="rev_tecnica_vence"
+                                value="{{ old('rev_tecnica_vence', $vehiculo->rev_tecnica_vence ? \Carbon\Carbon::parse($vehiculo->rev_tecnica_vence)->format('Y-m-d') : '') }}">
+                        </div>
+
+                        <div class="field">
+                            <label for="tarjeta_prop_vence">Tarjeta Propiedad Vence</label>
+                            <input type="date" id="tarjeta_prop_vence" name="tarjeta_prop_vence"
+                                value="{{ old('tarjeta_prop_vence', $vehiculo->tarjeta_prop_vence ? \Carbon\Carbon::parse($vehiculo->tarjeta_prop_vence)->format('Y-m-d') : '') }}">
+                        </div>
+
+                        {{-- SECCIÓN: ASIGNACIONES --}}
+                        <div class="field">
+                            <label for="propietario_id">Propietario</label>
+                            <select name="propietario_id" id="propietario_id">
+                                <option value="">-- Seleccionar --</option>
+                                @foreach ($propietarios as $p)
+                                    <option value="{{ $p->id }}"
+                                        {{ old('propietario_id', $vehiculo->propietario_id) == $p->id ? 'selected' : '' }}>
+                                        {{ $p->nombre }} {{ $p->apellidos }}
+                                    </option>
+                                @endforeach
+                            </select>
+                        </div>
+
+                        <div class="field">
+                            <label for="conductor_id">Conductor Habitual</label>
+                            <select name="conductor_id" id="conductor_id">
+                                <option value="">-- Seleccionar --</option>
+                                @foreach ($conductores as $c)
+                                    <option value="{{ $c->id }}"
+                                        {{ old('conductor_id', $vehiculo->conductor_id) == $c->id ? 'selected' : '' }}>
+                                        {{ $c->nombre }} {{ $c->apellidos }}
+                                    </option>
+                                @endforeach
+                            </select>
+                        </div>
+
+                        <div class="field">
+                            <label for="color">Color</label>
+                            <input type="text" id="color" name="color"
+                                value="{{ old('color', $vehiculo->color) }}">
+                        </div>
+
+                        {{-- SECCIÓN: RUTAS (FULL WIDTH) --}}
+                        <div class="field field-full">
+                            <label style="margin-bottom: 10px; display: block;">Rutas Autorizadas</label>
+                            <div
+                                style="display: flex; flex-wrap: wrap; gap: 12px; background: var(--bg); padding: 15px; border-radius: 10px; border: 1px solid var(--border2);">
+                                @php
+                                    $rutasActuales = old('rutas', $vehiculo->rutas->pluck('id')->toArray());
+                                @endphp
+                                @foreach ($rutas as $ruta)
+                                    <label
+                                        style="display: flex; align-items: center; gap: 8px; font-size: 13px; cursor: pointer; background: var(--card); padding: 6px 12px; border-radius: 6px; border: 1px solid var(--border);">
+                                        <input type="checkbox" name="rutas[]" value="{{ $ruta->id }}"
+                                            {{ in_array($ruta->id, $rutasActuales) ? 'checked' : '' }}>
+                                        {{ $ruta->nombre }}
+                                    </label>
+                                @endforeach
+                            </div>
+                        </div>
+
+                        {{-- NOTAS --}}
+                        <div class="field field-full">
+                            <label for="notas">Notas / Observaciones</label>
+                            <textarea id="notas" name="notas" rows="2" style="resize: none;"
+                                placeholder="Detalles adicionales de la unidad...">{{ old('notas', $vehiculo->notas) }}</textarea>
                         </div>
                     </div>
 
-                    {{-- Notas adicionales --}}
-                    <div class="form-group" style="grid-column: span 3;">
-                        <label>Notas / Observaciones</label>
-                        <textarea name="notas" class="form-control" rows="2">{{ old('notas', $vehiculo->notas) }}</textarea>
+                    <div
+                        style="margin-top: 30px; display: flex; justify-content: flex-end; gap: 12px; border-top: 1px solid var(--border); padding-top: 20px;">
+                        <a href="{{ route('vehiculos.index') }}" class="btn-secondary"
+                            style="text-decoration: none;">Cancelar</a>
+                        <button type="submit" class="btn-primary">
+                            <i class="fa-solid fa-rotate"></i> Actualizar Unidad
+                        </button>
                     </div>
-                </div>
-
-                <div style="margin-top: 30px; text-align: right; display: flex; justify-content: flex-end; gap: 12px;">
-                    <a href="{{ route('vehiculos.index') }}" class="btn-secondary"
-                        style="text-decoration: none; padding: 10px 20px; border-radius: 5px; background: #94a3b8; color: white;">Cancelar</a>
-                    <button type="submit" class="btn-primary" style="padding: 10px 30px; font-weight: 700;">Actualizar
-                        Vehículo</button>
-                </div>
-            </form>
+                </form>
+            </div>
         </div>
     </div>
 @endsection

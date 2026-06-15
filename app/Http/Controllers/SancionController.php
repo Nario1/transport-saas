@@ -5,38 +5,57 @@ namespace App\Http\Controllers;
 use App\Models\Sancion;
 use App\Models\Vehiculo;
 use App\Models\Conductor;
+use App\Http\Requests\StoreSancionRequest;
+use App\Http\Requests\PagarSancionRequest;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 
 class SancionController extends Controller
 {
-    public function index()
+    public function index(Request $request)
     {
         /** @var \App\Models\User $user */
         $user = Auth::user();
 
-        $pendientes = Sancion::where('empresa_id', $user->empresa_id)
-            ->where('estado', 'pendiente')
-            ->with(['vehiculo', 'conductor', 'registrador'])
-            ->latest('fecha')
-            ->get();
+        $from = $request->get('from');
+        $to   = $request->get('to');
 
-        $pagadas = Sancion::where('empresa_id', $user->empresa_id)
-            ->where('estado', 'pagado')
-            ->with(['vehiculo', 'conductor', 'cobrador'])
+        // Consultas base
+        $queryPendientes = Sancion::where('empresa_id', $user->empresa_id)->where('estado', 'pendiente');
+        $queryPagadas    = Sancion::where('empresa_id', $user->empresa_id)->where('estado', 'pagado');
+        $queryExoneradas = Sancion::where('empresa_id', $user->empresa_id)->where('estado', 'exonerado');
+
+        // Aplicar filtros si existen
+        if ($from) {
+            $queryPendientes->whereDate('fecha', '>=', $from);
+            $queryPagadas->whereDate('fecha', '>=', $from);
+            $queryExoneradas->whereDate('fecha', '>=', $from);
+        }
+        if ($to) {
+            $queryPendientes->whereDate('fecha', '<=', $to);
+            $queryPagadas->whereDate('fecha', '<=', $to);
+            $queryExoneradas->whereDate('fecha', '<=', $to);
+        }
+
+        $pendientes = $queryPendientes->with(['vehiculo', 'conductor', 'registrador', 'pagoMp'])
             ->latest('fecha')
-            ->paginate(20);
+            ->paginate(20, ['*'], 'pendientes_page');
+
+        $pagadas    = $queryPagadas->with(['vehiculo', 'conductor', 'cobrador', 'pagoMp'])
+            ->latest('fecha')
+            ->paginate(20, ['*'], 'pagadas_page');
+
+        $exoneradas = $queryExoneradas->with(['vehiculo', 'conductor', 'registrador'])
+            ->latest('fecha')
+            ->paginate(20, ['*'], 'exoneradas_page');
 
         $resumen = [
-            'total_pendiente' => $pendientes->sum('monto'),
-            'cantidad_pendiente' => $pendientes->count(),
-            'total_cobrado_mes' => Sancion::where('empresa_id', $user->empresa_id)
-                ->where('estado', 'pagado')
-                ->whereMonth('fecha', now()->month)
-                ->sum('monto'),
+            'total_pendiente' => $queryPendientes->clone()->sum('monto'),
+            'cantidad_pendiente' => $pendientes->total(),
+            'total_cobrado_rango' => $queryPagadas->clone()->sum('monto'),
         ];
 
-        return view('admin.sanciones.index', compact('pendientes', 'pagadas', 'resumen'));
+        return view('admin.sanciones.index', compact('pendientes', 'pagadas', 'exoneradas', 'resumen', 'from', 'to'));
     }
 
     public function create()
@@ -61,24 +80,12 @@ class SancionController extends Controller
         return view('admin.sanciones.create', compact('vehiculos', 'conductores', 'fechaHoy'));
     }
 
-    public function store(Request $request)
+    public function store(StoreSancionRequest $request)
     {
         /** @var \App\Models\User $user */
         $user = Auth::user();
 
-        $data = $request->validate([
-            'vehiculo_id'  => 'required|exists:vehiculos,id',
-            'conductor_id' => 'nullable|exists:conductores,id',
-            'fecha'        => 'required|date',
-            'motivo'       => 'required|string|max:200',
-            'descripcion'  => 'nullable|string|max:500',
-            'monto'        => 'required|numeric|min:0|max:9999',
-        ], [
-            'vehiculo_id.required' => 'El vehículo es obligatorio.',
-            'fecha.required'       => 'La fecha es obligatoria.',
-            'motivo.required'      => 'El motivo es obligatorio.',
-            'monto.required'       => 'El monto es obligatorio.',
-        ]);
+        $data = $request->validated();
 
         $this->verificarVehiculo($data['vehiculo_id'], $user->empresa_id);
 
@@ -96,26 +103,41 @@ class SancionController extends Controller
             ->with('success', 'Sanción registrada correctamente.');
     }
 
-    public function pagar(Sancion $sancion)
+    public function pagar(PagarSancionRequest $request, Sancion $sancion)
     {
         $this->verificarEmpresa($sancion);
 
         /** @var \App\Models\User $user */
         $user = Auth::user();
 
-        $data = request()->validate([
-            'metodo_pago' => 'required|in:efectivo,yape,plin,transferencia',
-        ], [
-            'metodo_pago.required' => 'El método de pago es obligatorio.',
-        ]);
+        $data = $request->validated();
 
         $sancion->update([
             'estado'      => 'pagado',
+            'metodo_pago' => $data['metodo_pago'] ?? 'efectivo',
             'cobrado_por' => $user->id,
             'cobrado_at'  => now(),
         ]);
 
         return back()->with('success', "Sanción de {$sancion->vehiculo->placa} marcada como pagada.");
+    }
+
+    public function exonerar(Request $request, Sancion $sancion)
+    {
+        $this->verificarEmpresa($sancion);
+
+        $request->validate([
+            'motivo_exoneracion' => 'required|string|max:255',
+        ]);
+
+        $sancion->update([
+            'estado'             => 'exonerado',
+            'motivo_exoneracion' => $request->motivo_exoneracion,
+            'exonerado_por'      => Auth::id(),
+            'exonerado_at'       => now(),
+        ]);
+
+        return back()->with('success', 'Sanción exonerada correctamente.');
     }
 
     public function destroy(Sancion $sancion)

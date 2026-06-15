@@ -10,8 +10,12 @@ use App\Models\User;
 use Illuminate\Support\Facades\Auth;
  
 
-class Ajuste extends Model
+use App\Traits\AuditableWithEmpresa;
+use OwenIt\Auditing\Contracts\Auditable;
+
+class Ajuste extends Model implements Auditable
 {
+    use AuditableWithEmpresa;
     protected $fillable = [
         'empresa_id','clave','valor','tipo','grupo','etiqueta','descripcion','es_publico',
     ];

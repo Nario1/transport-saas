@@ -1,91 +1,131 @@
 @extends('layouts.admin')
 
+@section('back_url', route('propietarios.index'))
+
 @section('content')
-    <div class="card" style="max-width: 800px; margin: 0 auto;">
-        <div class="card-header">
-            <div class="card-title">Editar Propietario: {{ $propietario->nombre }}</div>
-        </div>
-        <div class="card-body">
+    <div class="panel">
+        <div class="card" style="max-width: 800px; margin: 0 auto;">
+            <div class="card-header">
+                <div class="card-title">Editar Propietario: {{ $propietario->nombre }}</div>
+            </div>
 
-            {{-- BLOQUE PARA VER ERRORES DE VALIDACIÓN --}}
-            @if ($errors->any())
-                <div
-                    style="background: #fee2e2; color: #dc2626; padding: 15px; border-radius: 10px; margin-bottom: 20px; border: 1px solid #fecaca; font-size: 13px;">
-                    <ul style="margin: 0; padding-left: 20px;">
-                        @foreach ($errors->all() as $error)
-                            <li>{{ $error }}</li>
-                        @endforeach
-                    </ul>
-                </div>
-            @endif
+            <div class="card-body">
+                {{-- BLOQUE PARA ERRORES DE VALIDACIÓN --}}
+                @if ($errors->any())
+                    <div class="alert warning">
+                        <ul style="margin: 0; padding-left: 20px;">
+                            @foreach ($errors->all() as $error)
+                                <li>{{ $error }}</li>
+                            @endforeach
+                        </ul>
+                    </div>
+                @endif
 
-            <form action="{{ route('propietarios.update', $propietario->id) }}" method="POST">
-                @csrf
-                @method('PUT') {{-- VITAL para que Laravel reconozca que es una actualización --}}
+                <form action="{{ route('propietarios.update', $propietario->id) }}" method="POST">
+                    @csrf
+                    @method('PUT') {{-- VITAL para la actualización --}}
 
-                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px;">
-                    <div class="form-group">
-                        <label>Nombre</label>
-                        <input type="text" name="nombre" value="{{ old('nombre', $propietario->nombre) }}"
-                            class="form-control" required>
+                    <div class="form-grid">
+                        {{-- NOMBRE --}}
+                        <div class="field">
+                            <label for="nombre">Nombre</label>
+                            <input type="text" id="nombre" name="nombre"
+                                value="{{ old('nombre', $propietario->nombre) }}" required pattern="[A-Za-zÀ-ÿ\s]{2,60}"
+                                placeholder="Ej. Juan Manuel">
+                            @error('nombre')
+                                <span style="color: var(--red); font-size: 11px;">{{ $message }}</span>
+                            @enderror
+                        </div>
+
+                        {{-- APELLIDOS --}}
+                        <div class="field">
+                            <label for="apellidos">Apellidos</label>
+                            <input type="text" id="apellidos" name="apellidos"
+                                value="{{ old('apellidos', $propietario->apellidos) }}" required
+                                pattern="[A-Za-zÀ-ÿ\s]{2,60}" placeholder="Ej. Perez Garcia">
+                            @error('apellidos')
+                                <span style="color: var(--red); font-size: 11px;">{{ $message }}</span>
+                            @enderror
+                        </div>
+
+                        {{-- DNI CON BLOQUEO DE CARACTERES --}}
+                        <div class="field">
+                            <label for="dni">DNI</label>
+                            <input type="text" id="dni" name="dni" value="{{ old('dni', $propietario->dni) }}"
+                                maxlength="8" oninput="this.value = this.value.replace(/[^0-9]/g, '').slice(0, 8)"
+                                placeholder="8 dígitos">
+                            @error('dni')
+                                <span style="color: var(--red); font-size: 11px;">{{ $message }}</span>
+                            @enderror
+                        </div>
+
+                        {{-- TELÉFONO CON BLOQUEO DE CARACTERES --}}
+                        <div class="field">
+                            <label for="telefono">Teléfono</label>
+                            <input type="text" id="telefono" name="telefono"
+                                value="{{ old('telefono', $propietario->telefono) }}" maxlength="9"
+                                oninput="this.value = this.value.replace(/[^0-9]/g, '').slice(0, 9)"
+                                placeholder="9 dígitos">
+                            @error('telefono')
+                                <span style="color: var(--red); font-size: 11px;">{{ $message }}</span>
+                            @enderror
+                        </div>
+
+                        {{-- ESTADO --}}
+                        <div class="field">
+                            <label for="activo">Estado del Registro</label>
+                            <select name="activo" id="activo">
+                                <option value="1" {{ old('activo', $propietario->activo) == 1 ? 'selected' : '' }}>
+                                    🟢 Activo
+                                </option>
+                                <option value="0" {{ old('activo', $propietario->activo) == 0 ? 'selected' : '' }}>
+                                    🔴 Inactivo
+                                </option>
+                            </select>
+                            @error('activo')
+                                <span style="color: var(--red); font-size: 11px;">{{ $message }}</span>
+                            @enderror
+                        </div>
+
+                        {{-- CORREO (OPCIONAL) --}}
+                        <div class="field">
+                            <label for="email">Correo Electrónico</label>
+                            <input type="email" id="email" name="email"
+                                value="{{ old('email', $propietario->email) }}" placeholder="ejemplo@correo.com">
+                        </div>
+
+                        {{-- DIRECCIÓN (FULL WIDTH) --}}
+                        <div class="field field-full">
+                            <label for="direccion">Dirección Residencial</label>
+                            <input type="text" id="direccion" name="direccion"
+                                value="{{ old('direccion', $propietario->direccion) }}"
+                                placeholder="Av. Principal 123, Huancayo">
+                            @error('direccion')
+                                <span style="color: var(--red); font-size: 11px;">{{ $message }}</span>
+                            @enderror
+                        </div>
+
+                        {{-- NOTAS (FULL WIDTH) --}}
+                        <div class="field field-full">
+                            <label for="notas">Notas / Observaciones</label>
+                            <textarea id="notas" name="notas" rows="3" style="resize: none;"
+                                placeholder="Información adicional relevante...">{{ old('notas', $propietario->notas) }}</textarea>
+                        </div>
                     </div>
 
-                    <div class="form-group">
-                        <label>Apellidos</label>
-                        <input type="text" name="apellidos" value="{{ old('apellidos', $propietario->apellidos) }}"
-                            class="form-control" required>
+                    {{-- BOTONES DE ACCIÓN --}}
+                    <div
+                        style="margin-top: 30px; display: flex; justify-content: flex-end; gap: 12px; border-top: 1px solid var(--border); padding-top: 20px;">
+                        <a href="{{ route('propietarios.index') }}" class="btn-secondary"
+                            style="text-decoration: none; display: flex; align-items: center;">
+                            Cancelar
+                        </a>
+                        <button type="submit" class="btn-primary">
+                            <span class="ni"></span> Guardar Cambios
+                        </button>
                     </div>
-
-                    <div class="form-group">
-                        <label>DNI</label>
-                        <input type="text" name="dni" value="{{ old('dni', $propietario->dni) }}"
-                            class="form-control" maxlength="8">
-                    </div>
-
-                    <div class="form-group">
-                        <label>Teléfono</label>
-                        <input type="text" name="telefono" value="{{ old('telefono', $propietario->telefono) }}"
-                            class="form-control">
-                    </div>
-
-                    <div class="form-group">
-                        <label>Correo Electrónico</label>
-                        <input type="email" name="email" value="{{ old('email', $propietario->email) }}"
-                            class="form-control">
-                    </div>
-
-                    <div class="form-group">
-                        <label>Estado</label>
-                        <select name="activo" class="form-control">
-                            <option value="1" {{ old('activo', $propietario->activo) == 1 ? 'selected' : '' }}>🟢
-                                Activo</option>
-                            <option value="0" {{ old('activo', $propietario->activo) == 0 ? 'selected' : '' }}>🔴
-                                Inactivo</option>
-                        </select>
-                    </div>
-
-                    <div class="form-group" style="grid-column: span 2;">
-                        <label>Dirección</label>
-                        <input type="text" name="direccion" value="{{ old('direccion', $propietario->direccion) }}"
-                            class="form-control">
-                    </div>
-
-                    <div class="form-group" style="grid-column: span 2;">
-                        <label>Notas / Observaciones</label>
-                        <textarea name="notas" class="form-control" rows="3" style="resize: none;">{{ old('notas', $propietario->notas) }}</textarea>
-                    </div>
-                </div>
-
-                <div style="margin-top: 25px; text-align: right; display: flex; justify-content: flex-end; gap: 10px;">
-                    <a href="{{ route('propietarios.index') }}" class="btn-secondary"
-                        style="text-decoration: none; padding: 10px 20px; border-radius: 8px; background: #f3f4f6; color: #374151; display: inline-block;">
-                        Cancelar
-                    </a>
-                    <button type="submit" class="btn-primary" style="padding: 10px 25px; font-weight: 700;">
-                        Actualizar Cambios
-                    </button>
-                </div>
-            </form>
+                </form>
+            </div>
         </div>
     </div>
 @endsection

@@ -3,22 +3,50 @@
 namespace App\Http\Controllers;
 
 use App\Models\Propietario;
+use App\Models\Conductor;
+use App\Http\Requests\StorePropietarioRequest;
+use App\Http\Requests\UpdatePropietarioRequest;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\DB;
 
 class PropietarioController extends Controller
 {
-    public function index()
+    public function index(Request $request)
     {
         /** @var \App\Models\User $user */
         $user = Auth::user();
+    
+        $query = Propietario::where('empresa_id', $user->empresa_id)
+            ->with(['conductor.user'])
+            ->withCount('vehiculos');
+    
+        // ── Búsqueda libre ────────────────────────────────────────
+        if ($request->filled('q')) {
+            $q = $request->q;
+            $query->where(function ($query) use ($q) {
+                $query->where('nombre', 'like', "%{$q}%")
+                    ->orWhere('apellidos', 'like', "%{$q}%")
+                    ->orWhere('dni', 'like', "%{$q}%");
+            });
+        }
+    
+        // ── Filtro por estado ─────────────────────────────────────
+        if ($request->filled('activo')) {
+            $query->where('activo', $request->activo === 'activo' ? true : false);
+        }
+    
+        $resumen = [
+            'total' => $query->clone()->count(),
+            'activos' => $query->clone()->where('activo', true)->count()
+        ];
 
-        $propietarios = Propietario::where('empresa_id', $user->empresa_id)
-            ->withCount('vehiculos')
+        $propietarios = $query
             ->orderBy('nombre')
-            ->paginate(20);
-
-        return view('admin.propietarios.index', compact('propietarios'));
+            ->paginate(20)
+            ->withQueryString();
+    
+        return view('admin.propietarios.index', compact('propietarios', 'resumen'));
     }
 
     public function create()
@@ -26,40 +54,46 @@ class PropietarioController extends Controller
         return view('admin.propietarios.create');
     }
 
-    public function store(Request $request)
+    public function store(StorePropietarioRequest $request)
     {
         /** @var \App\Models\User $user */
         $user = Auth::user();
+        $data = $request->validated();
 
-        // 1. Validación con mensajes personalizados
-        $data = $request->validate([
-            'nombre'       => 'required|string|max:120',
-            'apellidos'    => 'required|string|max:120', // Requerido según tu lógica anterior
-            'dni'          => 'nullable|string|max:8',
-            'telefono'     => 'nullable|string|max:15',
-            'direccion'    => 'nullable|string|max:255',
-            'email'        => 'nullable|email|max:120',
-        ], [
-            'nombre.required'    => 'El nombre es obligatorio.',
-            'apellidos.required' => 'Los apellidos son obligatorios.',
-            'email.email'        => 'El formato del correo no es válido.',
-        ]);
+        return DB::transaction(function () use ($user, $data) {
+            try {
+                // 1. Crear Propietario
+                $data['empresa_id'] = $user->empresa_id;
+                $data['activo']     = true;
+                $propietario = Propietario::create($data);
 
-        try {
-            // 2. Asignación de datos automáticos
-            $data['empresa_id'] = $user->empresa_id;
-            $data['activo']     = true;
+                // 2. ¿Es también conductor?
+                if (!empty($data['es_conductor'])) {
+                    Conductor::create([
+                        'empresa_id'     => $user->empresa_id,
+                        'propietario_id' => $propietario->id,
+                        'nombre'         => $data['nombre'],
+                        'apellidos'      => $data['apellidos'],
+                        'dni'            => $data['dni'] ?? null,
+                        'telefono'       => $data['telefono'] ?? null,
+                        'email'          => $data['email'] ?? null,
+                        'direccion'      => $data['direccion'] ?? null,
+                        'tipo_licencia'  => $data['tipo_licencia'] ?? null,
+                        'licencia_vence' => $data['licencia_vence'] ?? null,
+                        'estado'         => $data['conductor_estado'] ?? 'activo',
+                    ]);
+                }
 
-            // 3. Creación
-            $propietario = Propietario::create($data);
+                $msg = !empty($data['es_conductor']) 
+                    ? 'Propietario y Conductor creados correctamente.'
+                    : 'Propietario "' . $propietario->nombre . '" registrado con éxito.';
 
-            return redirect()->route('propietarios.index')
-                ->with('success', 'Propietario "' . $propietario->nombre . '" registrado con éxito.');
+                return redirect()->route('propietarios.index')->with('success', $msg);
 
-        } catch (\Exception $e) {
-            // Regresa con el error específico y mantiene lo que el usuario escribió
-            return back()->withInput()->with('error', 'Error al guardar: ' . $e->getMessage());
-        }
+            } catch (\Exception $e) {
+                return back()->withInput()->with('error', 'Error al guardar: ' . $e->getMessage());
+            }
+        });
     }
 
     public function edit(Propietario $propietario)
@@ -68,17 +102,24 @@ class PropietarioController extends Controller
         return view('admin.propietarios.edit', compact('propietario'));
     }
 
-    public function update(Request $request, Propietario $propietario)
+    public function show(Propietario $propietario)
+    {
+        // 1. Verificamos que el propietario sea de la empresa del usuario
+        $this->verificarEmpresa($propietario);
+
+        // 2. Cargamos las relaciones necesarias
+        $propietario->load(['conductor', 'vehiculos' => function($query) {
+            $query->orderBy('placa');
+        }]);
+
+        return view('admin.propietarios.show', compact('propietario'));
+    }
+
+    public function update(UpdatePropietarioRequest $request, Propietario $propietario)
     {
         $this->verificarEmpresa($propietario);
 
-        $data = $request->validate([
-            'nombre'       => 'required|string|max:120',
-            'apellidos'    => 'required|string|max:120',
-            'dni'          => 'nullable|string|max:8',
-            'telefono'     => 'nullable|string|max:15',
-            'activo'       => 'boolean',
-        ]);
+        $data = $request->validated();
 
         try {
             $propietario->update($data);

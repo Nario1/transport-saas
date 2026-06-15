@@ -4,13 +4,12 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
 use OwenIt\Auditing\Contracts\Auditable; // la interfaz
-use OwenIt\Auditing\Auditable as AuditableTrait; // el trait
+use App\Traits\AuditableWithEmpresa;
 use Illuminate\Database\Eloquent\SoftDeletes;
-use Illuminate\Support\Facades\Auth;
 
 class Ruta extends Model implements Auditable
 {
-    use SoftDeletes, AuditableTrait;
+    use SoftDeletes, AuditableWithEmpresa, \Illuminate\Database\Eloquent\Factories\HasFactory;
 
     protected $fillable = ['empresa_id','nombre','codigo','origen','destino','estado','duracion_min','descripcion'];
     protected $auditInclude = ['nombre','origen','destino','estado'];

@@ -1,5 +1,10 @@
 @extends('layouts.admin')
 
+@section('back_url', route('dashboard'))
+@php
+    $pageTitle = 'Reportes';
+    $pageSubtitle = 'Análisis mensual acumulado de "' . (auth()->user()->empresa?->nombre ?? 'la empresa') . '"';
+@endphp
 @section('content')
     <div style="display: grid; gap: 25px;">
         <div class="card-header" style="padding:0;">
@@ -39,7 +44,7 @@
             <a href="{{ route('reportes.tributos') }}" class="card report-link"
                 style="text-decoration: none; transition: transform 0.2s;">
                 <div class="card-body" style="text-align: center; padding: 40px 20px;">
-                    <div style="font-size: 40px; margin-bottom: 15px;">💰</div>
+                    <div style="font-size: 40px; margin-bottom: 15px; color: #10b981;"><i class="fa-solid fa-sack-dollar"></i></div>
                     <div style="font-weight: 800; font-size: 18px; color: var(--text1);">Reporte de Tributos</div>
                     <p style="font-size: 13px; color: var(--text3);">Ingresos, métodos de pago y comparativas por día.</p>
                 </div>
@@ -47,7 +52,7 @@
 
             <a href="{{ route('reportes.vueltas') }}" class="card report-link" style="text-decoration: none;">
                 <div class="card-body" style="text-align: center; padding: 40px 20px;">
-                    <div style="font-size: 40px; margin-bottom: 15px;">🔄</div>
+                    <div style="font-size: 40px; margin-bottom: 15px; color: var(--accent);"><i class="fa-solid fa-arrows-rotate"></i></div>
                     <div style="font-weight: 800; font-size: 18px; color: var(--text1);">Productividad (Vueltas)</div>
                     <p style="font-size: 13px; color: var(--text3);">Vueltas por ruta, por vehículo y control de tiempos.
                     </p>
@@ -56,7 +61,7 @@
 
             <a href="{{ route('reportes.deudas') }}" class="card report-link" style="text-decoration: none;">
                 <div class="card-body" style="text-align: center; padding: 40px 20px;">
-                    <div style="font-size: 40px; margin-bottom: 15px;">🚨</div>
+                    <div style="font-size: 40px; margin-bottom: 15px; color: #ef4444;"><i class="fa-solid fa-triangle-exclamation"></i></div>
                     <div style="font-weight: 800; font-size: 18px; color: var(--text1);">Ranking de Deudas</div>
                     <p style="font-size: 13px; color: var(--text3);">Listado de unidades morosas y montos acumulados.</p>
                 </div>
@@ -64,7 +69,7 @@
 
             <a href="{{ route('reportes.sanciones') }}" class="card report-link" style="text-decoration: none;">
                 <div class="card-body" style="text-align: center; padding: 40px 20px;">
-                    <div style="font-size: 40px; margin-bottom: 15px;">📑</div>
+                    <div style="font-size: 40px; margin-bottom: 15px; color: #f59e0b;"><i class="fa-solid fa-file-invoice"></i></div>
                     <div style="font-weight: 800; font-size: 18px; color: var(--text1);">Control de Sanciones</div>
                     <p style="font-size: 13px; color: var(--text3);">Infracciones más comunes y conductores amonestados.</p>
                 </div>
@@ -72,7 +77,7 @@
 
             <a href="{{ route('reportes.documentos') }}" class="card report-link" style="text-decoration: none;">
                 <div class="card-body" style="text-align: center; padding: 40px 20px;">
-                    <div style="font-size: 40px; margin-bottom: 15px;">📋</div>
+                    <div style="font-size: 40px; margin-bottom: 15px; color: var(--text3);"><i class="fa-solid fa-clipboard-check"></i></div>
                     <div style="font-weight: 800; font-size: 18px; color: var(--text1);">Documentos y Vencimientos</div>
                     <p style="font-size: 13px; color: var(--text3);">Control de SOAT, Rev. Técnica y Licencias.</p>
                 </div>

@@ -5,6 +5,8 @@ namespace App\Http\Controllers;
 use App\Models\Tributo;
 use App\Models\Vehiculo;
 use App\Models\Conductor;
+use App\Http\Requests\StoreTributoRequest;
+use App\Http\Requests\PagarTributoRequest;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 
@@ -17,37 +19,53 @@ class TributoController extends Controller
 
         $fecha = request('fecha', today()->toDateString());
 
-        // Tributos del día seleccionado
+        // 1. Automatización: Asegurar que los tributos estén generados al entrar (si no es fecha futura)
+        if (\Carbon\Carbon::parse($fecha)->isPast() || \Carbon\Carbon::parse($fecha)->isToday()) {
+            Tributo::ensureGenerados($user->empresa_id);
+        }
+
+        // 2. Cargar tributos del día seleccionado
         $pagados = Tributo::where('empresa_id', $user->empresa_id)
             ->whereDate('fecha', $fecha)
             ->where('estado', 'pagado')
             ->with(['vehiculo', 'conductor', 'cobrador'])
-            ->get();
+            ->paginate(20, ['*'], 'pagados_page')
+            ->withQueryString();
 
         $pendientes = Tributo::where('empresa_id', $user->empresa_id)
             ->whereDate('fecha', $fecha)
             ->where('estado', 'pendiente')
             ->with(['vehiculo', 'conductor'])
-            ->get();
+            ->paginate(20, ['*'], 'pendientes_page')
+            ->withQueryString();
+            
+        $exonerados = Tributo::where('empresa_id', $user->empresa_id)
+            ->whereDate('fecha', $fecha)
+            ->where('estado', 'exonerado')
+            ->with(['vehiculo', 'conductor'])
+            ->paginate(20, ['*'], 'exonerados_page')
+            ->withQueryString();
 
-        // Resumen del día
+        // 3. Resumen del día (Calculados sobre la consulta completa para evitar errores de paginación)
+        $queryBase = Tributo::where('empresa_id', $user->empresa_id)->whereDate('fecha', $fecha);
+
         $resumen = [
-            'total_cobrado'   => $pagados->sum('monto'),
-            'total_pendiente' => $pendientes->sum('monto'),
-            'autos_pagaron'   => $pagados->count(),
-            'autos_pendientes'=> $pendientes->count(),
+            'total_cobrado'    => $queryBase->clone()->where('estado', 'pagado')->sum('monto'),
+            'total_pendiente'  => $queryBase->clone()->where('estado', 'pendiente')->sum('monto'),
+            'autos_pagaron'    => $pagados->total(),
+            'autos_pendientes' => $pendientes->total(),
+            'autos_exonerados' => $exonerados->total(),
         ];
 
-        // Deuda acumulada por vehículo (todos los pendientes históricos)
         $deudas = Tributo::where('empresa_id', $user->empresa_id)
             ->where('estado', 'pendiente')
-            ->with(['vehiculo', 'conductor'])
-            ->selectRaw('vehiculo_id, conductor_id, SUM(monto) as total_deuda, COUNT(*) as dias_deuda')
-            ->groupBy('vehiculo_id', 'conductor_id')
+            ->with(['vehiculo'])
+            ->selectRaw('vehiculo_id, SUM(monto) as total_deuda, COUNT(*) as dias_deuda')
+            ->groupBy('vehiculo_id')
             ->get();
 
         return view('admin.tributos.index', compact(
-            'pagados', 'pendientes', 'resumen', 'deudas', 'fecha'
+            'pagados', 'pendientes', 'exonerados', 'resumen', 'deudas', 'fecha'
         ));
     }
 
@@ -68,24 +86,12 @@ class TributoController extends Controller
         return view('admin.tributos.create', compact('vehiculos', 'fechaHoy'));
     }
 
-    public function store(Request $request)
+    public function store(StoreTributoRequest $request)
     {
         /** @var \App\Models\User $user */
         $user = Auth::user();
 
-        $data = $request->validate([
-            'vehiculo_id'   => 'required|exists:vehiculos,id',
-            'conductor_id'  => 'nullable|exists:conductores,id',
-            'fecha'         => 'required|date',
-            'monto'         => 'required|numeric|min:0|max:9999',
-            'metodo_pago'   => 'required|in:efectivo,yape,plin,transferencia',
-            'observaciones' => 'nullable|string|max:500',
-        ], [
-            'vehiculo_id.required' => 'El vehículo es obligatorio.',
-            'fecha.required'       => 'La fecha es obligatoria.',
-            'monto.required'       => 'El monto es obligatorio.',
-            'metodo_pago.required' => 'El método de pago es obligatorio.',
-        ]);
+        $data = $request->validated();
 
         $this->verificarVehiculo($data['vehiculo_id'], $user->empresa_id);
 
@@ -111,16 +117,14 @@ class TributoController extends Controller
     }
 
     // Cobro rápido desde el listado (botón cobrar)
-    public function cobrar(Tributo $tributo)
+    public function cobrar(PagarTributoRequest $request, Tributo $tributo)
     {
         $this->verificarEmpresa($tributo);
 
         /** @var \App\Models\User $user */
         $user = Auth::user();
 
-        $metodo = request()->validate([
-            'metodo_pago' => 'required|in:efectivo,yape,plin,transferencia',
-        ]);
+        $metodo = $request->validated();
 
         $tributo->update([
             'estado'      => 'pagado',
@@ -132,39 +136,89 @@ class TributoController extends Controller
         return back()->with('success', "Tributo de {$tributo->vehiculo->placa} cobrado correctamente.");
     }
 
+    // Acción para exonerar un tributo (mantenimiento, etc.)
+    public function exonerar(Request $request, Tributo $tributo)
+    {
+        $this->verificarEmpresa($tributo);
+
+        $request->validate([
+            'motivo_exoneracion' => 'required|string|max:255',
+        ]);
+
+        $tributo->update([
+            'estado'             => 'exonerado',
+            'monto'              => 0, // No paga nada
+            'motivo_exoneracion' => $request->motivo_exoneracion,
+            'exonerado_por'      => Auth::id(),
+            'exonerado_at'       => now(),
+        ]);
+
+        return back()->with('success', "Unidad {$tributo->vehiculo->placa} exonerada correctamente.");
+    }
+
     // Generar tributos pendientes del día para todos los vehículos activos
     public function generarDelDia()
     {
         /** @var \App\Models\User $user */
         $user = Auth::user();
 
-        $vehiculos = Vehiculo::where('empresa_id', $user->empresa_id)
-            ->where('estado', 'activo')
+        $generados = Tributo::ensureGenerados($user->empresa_id);
+
+        return back()->with('success', "Se procesaron los tributos de hoy. Unidades nuevas: {$generados}.");
+    }
+
+    // Exonerar todos los pendientes de una fecha específica
+    public function exonerarTodoHoy(Request $request)
+    {
+        /** @var \App\Models\User $user */
+        $user = Auth::user();
+
+        $fecha = $request->input('fecha', today()->toDateString());
+
+        $tributos = Tributo::where('empresa_id', $user->empresa_id)
+            ->whereDate('fecha', $fecha)
+            ->where('estado', 'pendiente')
             ->get();
 
-        $montoDiario = $user->empresa->tributo_diario ?? 24.00;
-        $generados   = 0;
+        $total = $tributos->count();
+        $motivo = $request->input('motivo_exoneracion', 'Exoneración Masiva');
 
-        foreach ($vehiculos as $vehiculo) {
-            $creado = Tributo::firstOrCreate(
-                [
-                    'vehiculo_id' => $vehiculo->id,
-                    'fecha'       => today(),
-                ],
-                [
-                    'empresa_id'   => $user->empresa_id,
-                    'conductor_id' => $vehiculo->conductor_id,
-                    'monto'        => $montoDiario,
-                    'estado'       => 'pendiente',
-                ]
-            );
-
-            if ($creado->wasRecentlyCreated) {
-                $generados++;
-            }
+        foreach ($tributos as $t) {
+            $t->update([
+                'estado'             => 'exonerado',
+                'monto'              => 0,
+                'motivo_exoneracion' => "MASIVO: " . $motivo,
+                'exonerado_por'      => $user->id,
+                'exonerado_at'       => now(),
+            ]);
         }
 
-        return back()->with('success', "Se generaron {$generados} tributos pendientes para hoy.");
+        return redirect()->route('tributos.index', ['fecha' => $fecha])
+            ->with('success', "Se han exonerado {$total} unidades para el día " . \Carbon\Carbon::parse($fecha)->format('d/m/Y') . " correctamente.");
+    }
+
+    public function detalleDeuda(Vehiculo $vehiculo)
+    {
+        $this->verificarVehiculo($vehiculo->id, Auth::user()->empresa_id);
+
+        $detalles = Tributo::where('vehiculo_id', $vehiculo->id)
+            ->where('estado', 'pendiente')
+            ->orderBy('fecha', 'desc')
+            ->get(['fecha', 'monto'])
+            ->map(fn($t) => [
+                'fecha' => $t->fecha->toDateString(),
+                'monto' => $t->monto
+            ]);
+
+        return response()->json([
+            'vehiculo' => [
+                'numero_flota' => $vehiculo->numero_flota,
+                'placa'        => $vehiculo->placa,
+                'propietario'  => $vehiculo->propietario?->nombre ?? 'Sin Propietario',
+            ],
+            'detalles' => $detalles,
+            'total'    => $detalles->sum('monto')
+        ]);
     }
 
     // ── Helpers ──────────────────────────────────────────────────

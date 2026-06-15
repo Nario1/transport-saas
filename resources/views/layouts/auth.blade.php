@@ -49,7 +49,7 @@
 
             <div style="text-align:center; margin-bottom:24px;">
                 <h1 style="font-size:20px; font-weight:800;">@yield('auth_title')</h1>
-                <p style="color:var(--text3); font-size:13px; margin-top:4px;">TransJunín SaaS</p>
+                <p style="color:var(--text3); font-size:13px; margin-top:4px;">TransJunín Plataforma SaaS</p>
             </div>
 
             {{-- ALERTAS DE SESIÓN --}}

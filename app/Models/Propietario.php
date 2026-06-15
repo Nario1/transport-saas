@@ -4,13 +4,14 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Database\Eloquent\Factories\HasFactory;
 use OwenIt\Auditing\Contracts\Auditable; // la interfaz
-use OwenIt\Auditing\Auditable as AuditableTrait; // el trait
+use App\Traits\AuditableWithEmpresa;
 use Illuminate\Database\Eloquent\SoftDeletes;
 
 class Propietario extends Model implements Auditable
 {
-    use SoftDeletes, AuditableTrait;
+    use SoftDeletes, AuditableWithEmpresa, HasFactory;
 
     protected $fillable = [
         'empresa_id', 'nombre', 'apellidos', 'dni', 'telefono',

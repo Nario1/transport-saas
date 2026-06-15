@@ -4,19 +4,25 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
 use OwenIt\Auditing\Contracts\Auditable; // la interfaz
-use OwenIt\Auditing\Auditable as AuditableTrait; // el trait
+use App\Traits\AuditableWithEmpresa;
 use Illuminate\Database\Eloquent\SoftDeletes;
-use Illuminate\Support\Facades\Auth;
 
 class Vuelta extends Model implements Auditable
 {
-    use SoftDeletes, AuditableTrait;
+    use SoftDeletes, AuditableWithEmpresa;
 
     protected $fillable = [
         'empresa_id','vehiculo_id','conductor_id','ruta_id','created_by',
-        'fecha','numero_vuelta','hora_salida','hora_llegada','observaciones',
+        'fecha', 'numero_vuelta', 'hora_salida', 'hora_llegada', 'observaciones',
+        'latitud', 'longitud', 'latitud_fin', 'longitud_fin', 'estado',
     ];
-    protected $casts = ['fecha' => 'date'];
+    protected $casts = [
+        'fecha'        => 'date',
+        'latitud'      => 'decimal:7',
+        'longitud'     => 'decimal:7',
+        'latitud_fin'  => 'decimal:7',
+        'longitud_fin' => 'decimal:7',
+    ];
     protected $auditInclude = ['vehiculo_id','conductor_id','ruta_id','fecha','numero_vuelta'];
 
     public function empresa()    { return $this->belongsTo(Empresa::class); }
@@ -29,6 +35,8 @@ class Vuelta extends Model implements Auditable
     {
         return $q->where('empresa_id', Auth::user()?->empresa_id ?? 0);
     }
-    public function scopeHoy($q)    { return $q->whereDate('fecha', today()); }
+    public function scopeHoy($q)       { return $q->whereDate('fecha', today()); }
     public function scopeDelDia($q, $fecha) { return $q->whereDate('fecha', $fecha); }
+    public function scopeActivas($q)   { return $q->where('estado', 'activa'); }
+    public function scopeCompletadas($q) { return $q->where('estado', 'completada'); }
 }

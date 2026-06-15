@@ -9,6 +9,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Auth;
 use Spatie\Permission\Models\Role;
+use Spatie\Permission\Models\Permission;
 use Illuminate\Support\Facades\DB;
 
 class RegisterController extends Controller
@@ -28,13 +29,13 @@ class RegisterController extends Controller
         ]);
 
         return DB::transaction(function () use ($request) {
-            
+
             // 1. Crear la Empresa (Tenant)
             $empresa = Empresa::create([
                 'nombre'         => $request->empresa_nombre,
                 'activa'         => 1,
                 'plan'           => 'basico',
-                'tributo_diario' => 24.00,
+                'tributo_diario' => 0.00,
             ]);
 
             // 2. Crear el Usuario Admin de esa empresa
@@ -43,14 +44,18 @@ class RegisterController extends Controller
                 'name'       => $request->name,
                 'email'      => $request->email,
                 'password'   => Hash::make($request->password),
-                'activo'     => true
+                'activo'     => true,
             ]);
 
-            // 3. Asignar Rol ADMIN (el nivel más alto para clientes)
-            $role = Role::firstOrCreate(['name' => 'ADMIN', 'guard_name' => 'web']);
-            $user->assignRole($role);
+            // 3. Obtener el rol ADMIN (Ya creado y configurado por EmpresaObserver)
+            $prefijo = 'e' . $empresa->id . '_';
+            $adminRole = Role::where('name', $prefijo . 'ADMIN')->first();
+            
+            if ($adminRole) {
+                $user->assignRole($adminRole);
+            }
 
-            // 4. Autologin y entrada directa
+            // 5. Autologin y entrada directa
             Auth::login($user);
 
             return redirect()->route('dashboard')

@@ -6,11 +6,12 @@
     <form method="POST" action="{{ route('login') }}">
         @csrf
 
-        {{-- Campo: Email --}}
+        {{-- Campo: Email / Placa --}}
         <div style="margin-bottom: 16px;">
-            <label style="display:block; margin-bottom:6px; font-weight:600; font-size:13px;">Correo Electrónico</label>
-            <input type="email" name="email" value="{{ old('email') }}" required autofocus
-                style="width:100%; padding:10px; border:1px solid var(--border); border-radius:8px; background:var(--bg);">
+            <label style="display:block; margin-bottom:6px; font-weight:600; font-size:13px;">Usuario / Placa</label>
+            <input type="text" name="email" value="{{ old('email') }}" required autofocus
+                style="width:100%; padding:10px; border:1px solid var(--border); border-radius:8px; background:var(--bg);"
+                placeholder="Ej. ABC-123">
             @error('email')
                 <span
                     style="color:var(--danger); font-size:12px; font-weight:600; margin-top:4px; display:block;">{{ $message }}</span>

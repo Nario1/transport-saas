@@ -1,140 +1,230 @@
 <?php
 
 namespace App\Http\Controllers;
+
 use Spatie\Permission\Models\Role;
 use Spatie\Permission\Models\Permission;
-use App\Models\User;
+use App\Http\Requests\StoreRoleRequest;
+use App\Http\Requests\UpdateRoleRequest;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Http\Request;
 
 class RoleController extends Controller
 {
-    /**
-     * Display a listing of the resource.
-     */
-    public function index()
-    {
-        $query = Role::withCount('users');
+    // ══════════════════════════════════════════════════════════════
+    // HELPERS
+    // ══════════════════════════════════════════════════════════════
 
+    /** Prefijo único por empresa: empresa_id=3 → "e3_" */
+    private function prefijo(): string
+    {
         /** @var \App\Models\User $user */
         $user = Auth::user();
+        return 'e' . $user->empresa_id . '_';
+    }
 
-        if ($user?->email !== 'superadmin@transjunin.com') {
-            $query->where('name', '!=', 'SUPER_ADMIN');
+    /** "SUPERVISOR" → "e3_SUPERVISOR" */
+    private function nombreConPrefijo(string $nombre): string
+    {
+        return $this->prefijo() . strtoupper($nombre);
+    }
+
+    /** "e3_SUPERVISOR" → "SUPERVISOR" */
+    private function nombreSinPrefijo(string $nombre): string
+    {
+        return preg_replace('/^e\d+_/', '', $nombre);
+    }
+
+    /** Permisos que no se pueden asignar desde el panel de empresa */
+    private function permisosExcluidos(): array
+    {
+        return [
+            'gestionar empresas',
+            'conductor.dashboard',
+            'conductor.tributos',
+            'conductor.vueltas',
+            'conductor.sanciones',
+            'conductor.perfil',
+        ];
+    }
+
+    /** Roles del sistema que nunca se muestran ni editan */
+    private function rolesSistema(): array
+    {
+        return ['SUPER_ADMIN', 'ADMIN'];
+    }
+
+    // ══════════════════════════════════════════════════════════════
+    // CRUD
+    // ══════════════════════════════════════════════════════════════
+
+    public function index()
+    {
+        /** @var \App\Models\User $user */
+        $user    = Auth::user();
+        $prefijo = $this->prefijo();
+
+        // Mostrar solo roles que pertenecen a esta empresa
+        $roles = Role::withCount('users')
+            ->where('name', 'like', $prefijo . '%')
+            ->get()
+            ->map(function ($role) {
+                $role->nombre_visible = $this->nombreSinPrefijo($role->name);
+                return $role;
+            });
+
+        // Si es SUPER_ADMIN también ve los roles base del sistema
+        if ($user->hasRole('SUPER_ADMIN')) {
+            $rolesSistema = Role::withCount('users')
+                ->whereIn('name', ['ADMIN', 'OPERADOR'])
+                ->get()
+                ->map(function ($role) {
+                    $role->nombre_visible = $role->name;
+                    return $role;
+                });
+
+            $roles = $roles->merge($rolesSistema);
         }
 
-        $roles = $query->get();
         return view('admin.roles.index', compact('roles'));
     }
 
-    /**
-     * Show the form for creating a new resource.
-     */
     public function create()
     {
-        $allPermissions = \Spatie\Permission\Models\Permission::pluck('name');
-        $permissions = Permission::where('name', '!=', 'gestionar empresas')->get();
-        return view('admin.roles.create', compact('allPermissions', 'permissions'));
+        $allPermissions = Permission::whereNotIn('name', $this->permisosExcluidos())
+            ->orderBy('name')
+            ->pluck('name');
+
+        return view('admin.roles.create', compact('allPermissions'));
     }
 
-    /**
-     * Store a newly created resource in storage.
-     */
-    public function store(Request $request)
+    public function store(StoreRoleRequest $request)
     {
+        $request->validated();
 
-        $request->validate([
-            'name' => 'required|string|max:255|unique:roles,name',
-            'permissions' => 'nullable|array',
-        ], [
-            'name.required' => 'El nombre del rol es obligatorio.',
-            'name.unique' => 'Este nombre de rol ya existe.',
-        ]);
+        $nombreCompleto = $this->nombreConPrefijo($request->name);
+
+        // Unicidad dentro de esta empresa
+        if (Role::where('name', $nombreCompleto)->exists()) {
+            return back()->withInput()
+                ->with('error', 'Ya existe un rol con ese nombre en tu empresa.');
+        }
 
         try {
-            // Creamos el rol (convertimos a mayúsculas para mantener consistencia)
             $role = Role::create([
-                'name' => strtoupper($request->name),
-                'guard_name' => 'web'
+                'name'       => $nombreCompleto,
+                'guard_name' => 'web',
             ]);
 
-            if ($request->has('permissions')) {
+            if ($request->filled('permissions')) {
                 $role->syncPermissions($request->permissions);
             }
 
             return redirect()->route('roles.index')
-                ->with('success', 'El rol "' . $role->name . '" ha sido creado correctamente.');
+                ->with('success', "Rol \"{$this->nombreSinPrefijo($role->name)}\" creado correctamente.");
 
         } catch (\Exception $e) {
-            return back()->withInput()->with('error', 'Ocurrió un error: ' . $e->getMessage());
+            return back()->withInput()
+                ->with('error', 'Ocurrió un error: ' . $e->getMessage());
         }
     }
 
-    /**
-     * Display the specified resource.
-     */
-    public function show(string $id)
+    public function show($id)
     {
-        //
+        $role = Role::with('users')->findOrFail($id);
+
+        $this->verificarAcceso($role);
+
+        $nombreVisible = $this->nombreSinPrefijo($role->name);
+        $permissions   = $role->permissions->pluck('name');
+
+        return view('admin.roles.show', compact('role', 'nombreVisible', 'permissions'));
     }
 
-    // Muestra el formulario de edición
     public function edit($id)
     {
-        $role = \Spatie\Permission\Models\Role::findOrFail($id);
-        
-        // Obtenemos todos los permisos para llenar los checkboxes
-        $allPermissions = \Spatie\Permission\Models\Permission::pluck('name');
+        $role = Role::findOrFail($id);
 
-        return view('admin.roles.edit', compact('role', 'allPermissions'));
+        $this->verificarAcceso($role);
+
+        $allPermissions  = Permission::whereNotIn('name', $this->permisosExcluidos())
+            ->orderBy('name')
+            ->pluck('name');
+
+        $permisosActivos = $role->permissions->pluck('name')->toArray();
+        $nombreVisible   = $this->nombreSinPrefijo($role->name);
+
+        return view('admin.roles.edit', compact(
+            'role', 'allPermissions', 'permisosActivos', 'nombreVisible'
+        ));
     }
 
-    // Procesa la actualización
-    public function update(Request $request, $id)
+    public function update(UpdateRoleRequest $request, $id)
     {
-        $role = \Spatie\Permission\Models\Role::findOrFail($id);
+        $role = Role::findOrFail($id);
 
-        $request->validate([
-            'name' => 'required|string|max:255|unique:roles,name,' . $id,
-            'permissions' => 'nullable|array',
-        ]);
+        $this->verificarAcceso($role);
 
-        // Actualizar nombre (solo si no es SUPER_ADMIN para evitar bloqueos)
-        if ($role->name !== 'SUPER_ADMIN') {
-            $role->name = strtoupper($request->name);
-            $role->save();
+        $request->validated();
+
+        $nombreCompleto = $this->nombreConPrefijo($request->name);
+
+        // Unicidad excluyendo el rol actual
+        if (Role::where('name', $nombreCompleto)->where('id', '!=', $id)->exists()) {
+            return back()->withInput()
+                ->with('error', 'Ya existe un rol con ese nombre en tu empresa.');
         }
 
-        // Sincronizar permisos (Spatie se encarga de quitar los anteriores y poner los nuevos)
-        $role->syncPermissions($request->permissions);
+        $role->update(['name' => $nombreCompleto]);
+        $role->syncPermissions($request->permissions ?? []);
 
         return redirect()->route('roles.index')
-            ->with('success', 'El rol "' . $role->name . '" se actualizó correctamente.');
+            ->with('success', "Rol \"{$this->nombreSinPrefijo($role->name)}\" actualizado correctamente.");
     }
 
-    /**
-     * Remove the specified resource from storage.
-     */
     public function destroy($id)
     {
-        $role = \Spatie\Permission\Models\Role::findOrFail($id);
+        $role = Role::findOrFail($id);
 
-        // 1. Prohibir eliminar el SUPER_ADMIN
-        if ($role->name === 'SUPER_ADMIN') {
-            return redirect()->route('roles.index')
-                ->with('error', 'El rol maestro (SUPER_ADMIN) no puede ser eliminado.');
-        }
+        $this->verificarAcceso($role);
 
-        // 2. Verificar si el rol tiene usuarios asignados
         if ($role->users()->count() > 0) {
             return redirect()->route('roles.index')
-                ->with('error', 'No se puede eliminar un rol que ya tiene usuarios vinculados.');
+                ->with('error', 'No se puede eliminar un rol que tiene usuarios asignados.');
         }
 
-        // 3. Eliminar el rol (Spatie se encarga de limpiar las tablas intermedias)
         $role->delete();
 
         return redirect()->route('roles.index')
-            ->with('success', 'El rol ha sido eliminado correctamente.');
+            ->with('success', 'Rol eliminado correctamente.');
+    }
+
+    // ══════════════════════════════════════════════════════════════
+    // SEGURIDAD
+    // ══════════════════════════════════════════════════════════════
+
+    private function verificarAcceso(Role $role): void
+    {
+        $nombreLimpio = $this->nombreSinPrefijo($role->name);
+
+        // 1. Roles globales del sistema (sin prefijo eX_)
+        if (in_array($role->name, ['SUPER_ADMIN', 'ADMIN', 'OPERADOR', 'conductor'])) {
+            // Solo el SUPER_ADMIN global puede tocar estos
+            if (!Auth::user()->hasRole('SUPER_ADMIN')) {
+                abort(403, 'Este rol base del sistema no puede modificarse.');
+            }
+            return;
+        }
+
+        // 2. Roles de la empresa (con prefijo eX_)
+        // Bloquear solo si el nombre base es "ADMIN"
+        if ($nombreLimpio === 'ADMIN') {
+            abort(403, 'El rol administrador de la empresa no puede ser modificado ni eliminado.');
+        }
+
+        // Verificar que el rol pertenece a la empresa actual
+        if (!str_starts_with($role->name, $this->prefijo())) {
+            abort(403, 'No tienes permiso para gestionar este rol de otra empresa.');
+        }
     }
 }

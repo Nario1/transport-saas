@@ -62,7 +62,7 @@
                             <td style="text-align: right;">
                                 <div style="display: flex; justify-content: flex-end; gap: 10px;">
                                     {{-- Botón de Suspensión/Activación --}}
-                                    <form action="{{ route('empresas.toggle', $empresa->id) }}" method="POST">
+                                    <form action="{{ route('superadmin.empresas.toggle', $empresa->id) }}" method="POST">
                                         @csrf
                                         @method('PATCH')
                                         <button type="submit" class="{{ $empresa->activa ? 'btn-danger' : 'btn-primary' }}"
@@ -72,7 +72,7 @@
                                     </form>
 
                                     {{-- Botón Editar (por si quieres cambiar su tributo diario o plan) --}}
-                                    <a href="{{ route('empresas.edit', $empresa->id) }}" class="btn-secondary"
+                                    <a href="{{ route('superadmin.empresas.edit', $empresa->id) }}" class="btn-secondary"
                                         style="padding: 8px; border-radius: 10px; text-decoration: none;">
                                         ⚙️
                                     </a>

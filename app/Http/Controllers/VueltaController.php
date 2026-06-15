@@ -6,6 +6,7 @@ use App\Models\Vuelta;
 use App\Models\Vehiculo;
 use App\Models\Conductor;
 use App\Models\Ruta;
+use App\Http\Requests\StoreVueltaAdminRequest;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 
@@ -23,13 +24,14 @@ class VueltaController extends Controller
             ->with(['vehiculo', 'conductor', 'ruta'])
             ->orderBy('numero_vuelta')
             ->orderBy('created_at')
-            ->get();
+            ->paginate(20)
+            ->withQueryString();
 
         // Resumen del día
         $resumen = [
-            'total'      => $vueltas->count(),
-            'vehiculos'  => $vueltas->pluck('vehiculo_id')->unique()->count(),
-            'conductores'=> $vueltas->pluck('conductor_id')->unique()->count(),
+            'total'      => $vueltas->total(),
+            'vehiculos'  => Vuelta::where('empresa_id', $user->empresa_id)->whereDate('fecha', $fecha)->distinct('vehiculo_id')->count(),
+            'conductores'=> Vuelta::where('empresa_id', $user->empresa_id)->whereDate('fecha', $fecha)->distinct('conductor_id')->count(),
         ];
 
         return view('admin.vueltas.index', compact('vueltas', 'fecha', 'resumen'));
@@ -62,25 +64,12 @@ class VueltaController extends Controller
         return view('admin.vueltas.create', compact('vehiculos', 'conductores', 'rutas', 'fechaHoy'));
     }
 
-    public function store(Request $request)
+    public function store(StoreVueltaAdminRequest $request)
     {
         /** @var \App\Models\User $user */
         $user = Auth::user();
 
-        $data = $request->validate([
-            'vehiculo_id'   => 'required|exists:vehiculos,id',
-            'conductor_id'  => 'nullable|exists:conductores,id',
-            'ruta_id'       => 'nullable|exists:rutas,id',
-            'fecha'         => 'required|date',
-            'numero_vuelta' => 'required|integer|min:1|max:99',
-            'hora_salida'   => 'nullable|date_format:H:i',
-            'hora_llegada'  => 'nullable|date_format:H:i',
-            'observaciones' => 'nullable|string|max:500',
-        ], [
-            'vehiculo_id.required'   => 'El vehículo es obligatorio.',
-            'fecha.required'         => 'La fecha es obligatoria.',
-            'numero_vuelta.required' => 'El número de vuelta es obligatorio.',
-        ]);
+        $data = $request->validated();
 
         // Verificar que el vehículo pertenece a la empresa
         $this->verificarVehiculo($data['vehiculo_id'], $user->empresa_id);
@@ -103,6 +92,22 @@ class VueltaController extends Controller
 
         return redirect()->route('vueltas.index')
             ->with('success', 'Vuelta registrada correctamente.');
+    }
+
+    public function completar(Vuelta $vuelta)
+    {
+        $this->verificarEmpresa($vuelta);
+
+        if ($vuelta->estado !== 'activa') {
+            return back()->with('error', 'Solo se pueden completar vueltas en curso.');
+        }
+
+        $vuelta->update([
+            'estado' => 'completada',
+            'hora_llegada' => now(),
+        ]);
+
+        return back()->with('success', 'La vuelta se marcó como completada manualmente.');
     }
 
     public function destroy(Vuelta $vuelta)

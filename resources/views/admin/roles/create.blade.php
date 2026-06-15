@@ -1,110 +1,123 @@
+{{-- ══════════════════════════════════════════════════════════
+     resources/views/admin/roles/create.blade.php
+══════════════════════════════════════════════════════════ --}}
 @extends('layouts.admin')
 
+@section('back_url', route('roles.index'))
+
 @php
-    $pageTitle = 'Crear Nuevo Rol';
-    $pageSubtitle = 'Define los accesos para el nuevo nivel de usuario';
+    $groups = [
+        'Personal' => ['user', 'conductor'],
+        'Flota' => ['vehiculo', 'propietario'],
+        'Operaciones' => ['ruta', 'vuelta', 'paradero'],
+        'Finanzas' => ['tributo', 'sancion'],
+        'Sistema' => ['rol', 'empresa', 'ajuste']
+    ];
+    $shownPermissions = [];
 @endphp
 
 @section('content')
-    <div style="display: flex; justify-content: center; width: 100%; padding: 20px 0;">
-        <div style="width: 100%; max-width: 800px;">
 
-            <div style="display: flex; justify-content: flex-start; margin-bottom: 24px;">
-                <a href="{{ route('roles.index') }}" class="btn-secondary"
-                    style="text-decoration: none; display: flex; align-items: center; gap: 8px; font-weight: 600;">
-                    ← Volver al listado
-                </a>
+    <div style="max-width:900px; margin:0 auto;">
+
+        {{-- Alertas de validación --}}
+
+        @if ($errors->any())
+            <div class="alert danger" style="margin-bottom:16px;">
+                @foreach ($errors->all() as $e)
+                    <div>{{ $e }}</div>
+                @endforeach
             </div>
+        @endif
 
-            <div class="card">
-                <div class="card-header">
-                    <div class="card-title">Formulario de Registro de Rol</div>
-                </div>
+        <div class="card">
+            <div class="card-header">
+                <span class="card-title">Formulario de registro de Nivel</span>
+            </div>
+            <div class="card-body">
+                <form action="{{ route('roles.store') }}" method="POST">
+                    @csrf
 
-                <div class="card-body">
-                    <form action="{{ route('roles.store') }}" method="POST">
-                        @csrf
-
-                        <div class="form-section">
-                            <div class="form-section-title">Nombre del Rol</div>
-                            <div class="form-grid">
-                                <div class="field field-full">
-                                    <label>Seleccionar nivel de acceso</label>
-                                    <select id="role_selector" onchange="checkRole(this)"
-                                        style="width: 100%; border: 1px solid #e2e8f0; border-radius: 10px; padding: 12px; font-size: 14px;">
-                                        <option value="" disabled selected>Seleccione un rol...</option>
-                                        <option value="ADMINISTRADOR">ADMINISTRADOR</option>
-                                        <option value="OPERADOR">OPERADOR</option>
-                                        <option value="USUARIO">USUARIO</option>
-                                        <option value="custom">-- OTRO (Escribir nombre personalizado) --</option>
-                                    </select>
-                                </div>
-
-                                {{-- Campo oculto para nombre personalizado --}}
-                                <div id="custom_role_wrapper" class="field field-full"
-                                    style="display: none; margin-top: 15px;">
-                                    <label>Nombre del Nuevo Rol</label>
-                                    <input type="text" id="custom_role_input" name="name"
-                                        style="width: 100%; border: 1px solid #e2e8f0; border-radius: 10px; padding: 12px; font-size: 14px;"
-                                        placeholder="Ej: GERENTE, DESPACHADOR, etc.">
-                                </div>
+                    {{-- Nombre del rol --}}
+                    <div class="form-section" style="margin-bottom: 32px;">
+                        <div class="form-section-title" style="font-size: 13px; color: var(--text3); text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 16px; font-weight: 800;">
+                            <i class="fa-solid fa-tag"></i> Identidad del Nivel
+                        </div>
+                        <div style="display: grid; grid-template-columns: 1fr; gap: 20px;">
+                            <div class="field">
+                                <label style="display: block; font-weight: 700; margin-bottom: 8px; color: var(--text2); font-size: 13px;">Seleccionar tipo base</label>
+                                <select id="role_selector" onchange="checkRole(this)"
+                                    style="background:var(--bg); border:1px solid var(--border2); border-radius:12px; padding:12px 16px; font-size:14px; width:100%; color: var(--text); outline: none; font-weight: 700;">
+                                    <option value="" disabled selected>Seleccione un tipo...</option>
+                                    <option value="ADMINISTRADOR">ADMINISTRADOR</option>
+                                    <option value="OPERADOR">OPERADOR</option>
+                                    <option value="SUPERVISOR">SUPERVISOR</option>
+                                    <option value="custom">— Escribir nombre personalizado —</option>
+                                </select>
+                            </div>
+                            <div id="custom_role_wrapper" class="field" style="display:none;">
+                                <label style="display: block; font-weight: 700; margin-bottom: 8px; color: var(--text2); font-size: 13px;">Nombre personalizado</label>
+                                <input type="text" id="custom_role_input" name="name"
+                                    placeholder="Ej: GERENTE, DESPACHADOR..." value="{{ old('name') }}"
+                                    style="background:var(--bg); border:1px solid var(--border2); border-radius:12px; padding:12px 16px; font-size:14px; width:100%; color: var(--text); outline: none; font-weight: 700;">
                             </div>
                         </div>
+                    </div>
 
-                        <div class="form-section" style="margin-top: 30px;">
-                            <div class="form-section-title">Asignación de Permisos (Accesos)</div>
-                            <p style="font-size: 12px; color: var(--text3); margin-bottom: 15px;">
-                                Selecciona las secciones a las que este rol podrá entrar:
-                            </p>
-
-                            <div
-                                style="display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 15px;">
-                                @foreach ($allPermissions as $permiso)
-                                    <label
-                                        style="display: flex; align-items: center; gap: 12px; padding: 12px; border: 1px solid #f1f5f9; border-radius: 10px; cursor: pointer;">
-                                        <input type="checkbox" name="permissions[]" value="{{ $permiso }}"
-                                            style="width: 18px; height: 18px; accent-color: var(--accent);">
-                                        <span style="font-size: 13.5px; font-weight: 500; color: var(--text2);">
-                                            {{ ucfirst($permiso) }}
-                                        </span>
-                                    </label>
-                                @endforeach
-                            </div>
+                    {{-- Permisos --}}
+                    <div class="form-section" style="margin-top:24px;">
+                        <div class="form-section-title" style="font-size: 13px; color: var(--text3); text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 12px; font-weight: 800;">
+                            <i class="fa-solid fa-key"></i> Matriz de Facultades
                         </div>
+                        <p style="font-size:12px; color:var(--text3); margin-bottom:20px;">
+                            Habilita las secciones a las que este nivel podrá acceder dentro del panel:
+                        </p>
 
-                        <div
-                            style="margin-top: 40px; padding-top: 20px; border-top: 1px solid var(--border); display: flex; gap: 12px; justify-content: flex-end;">
-                            <a href="{{ route('roles.index') }}" class="btn-secondary"
-                                style="text-decoration: none;">Cancelar</a>
-                            <button type="submit" class="btn-primary"
-                                style="padding: 12px 32px; font-weight: 700; box-shadow: var(--shadow-m);">
-                                Guardar Rol
-                            </button>
+                        <div style="display:grid; grid-template-columns:repeat(auto-fill, minmax(240px,1fr)); gap:10px;">
+                            @foreach ($allPermissions as $permiso)
+                                <label style="display:flex; align-items:center; gap:10px; padding:10px 12px; cursor:pointer; background: var(--bg); border: 1px solid var(--border); border-radius:10px; transition: border .2s;"
+                                    onmouseover="this.style.borderColor='var(--accent)'" 
+                                    onmouseout="this.style.borderColor='var(--border)'">
+                                    <input type="checkbox" name="permissions[]" value="{{ $permiso }}"
+                                        class="perm-check" style="width:16px; height:16px; accent-color:var(--accent);"
+                                        {{ in_array($permiso, old('permissions', [])) ? 'checked' : '' }}>
+                                    <span style="font-size:12px; font-weight:700; color:var(--text2);">
+                                        {{ str_replace(['.', '_'], ' ', strtoupper($permiso)) }}
+                                    </span>
+                                </label>
+                            @endforeach
                         </div>
-                    </form>
-                </div>
+                    </div>
+
+                    <div class="form-actions" style="margin-top: 40px; display: flex; gap: 16px;">
+                        <a href="{{ route('roles.index') }}" class="btn-secondary" style="flex: 1; text-align: center; text-decoration: none; padding: 14px; border-radius: 12px; font-weight: 700;">CANCELAR</a>
+                        <button type="submit" class="btn-primary" style="flex: 2; border: none; padding: 14px; border-radius: 12px; font-weight: 800; font-size: 15px;">
+                            <i class="fa-solid fa-floppy-disk"></i> GUARDAR ROL
+                        </button>
+                    </div>
+                </form>
             </div>
         </div>
     </div>
 
+@endsection
+
+@push('scripts')
     <script>
         function checkRole(select) {
-            const customWrapper = document.getElementById('custom_role_wrapper');
-            const customInput = document.getElementById('custom_role_input');
+            const wrapper = document.getElementById('custom_role_wrapper');
+            const input = document.getElementById('custom_role_input');
 
             if (select.value === 'custom') {
-                customWrapper.style.display = 'block';
-                customInput.value = '';
-                customInput.focus();
-                // El input de texto lleva el name="name"
-                customInput.name = "name";
+                wrapper.style.display = 'block';
+                input.name = 'name';
                 select.removeAttribute('name');
+                input.focus();
             } else {
-                customWrapper.style.display = 'none';
-                // El select lleva el name="name"
-                select.name = "name";
-                customInput.removeAttribute('name');
+                wrapper.style.display = 'none';
+                select.name = 'name';
+                input.removeAttribute('name');
             }
         }
     </script>
-@endsection
+@endpush

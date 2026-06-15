@@ -1,5 +1,7 @@
 @extends('layouts.admin')
 
+@section('back_url', route('tributos.index'))
+
 @section('content')
     <div class="card" style="max-width: 600px; margin: 0 auto;">
         <div class="card-header">
@@ -19,6 +21,10 @@
                                 </option>
                             @endforeach
                         </select>
+                    
+                        @error('vehiculo_id')
+                            <span style="color: #dc2626; font-size: 0.8rem; margin-top: 4px; display: block;">{{ $message }}</span>
+                        @enderror
                     </div>
 
                     {{-- Campo oculto para el conductor automático --}}
@@ -28,12 +34,20 @@
                         <div class="form-group">
                             <label>Fecha del Tributo</label>
                             <input type="date" name="fecha" value="{{ $fechaHoy }}" class="form-control" required>
-                        </div>
+                        
+                        @error('fecha')
+                            <span style="color: #dc2626; font-size: 0.8rem; margin-top: 4px; display: block;">{{ $message }}</span>
+                        @enderror
+                    </div>
                         <div class="form-group">
                             <label>Monto (S/)</label>
                             <input type="number" name="monto" value="24.00" step="0.50" class="form-control"
                                 required>
-                        </div>
+                        
+                        @error('monto')
+                            <span style="color: #dc2626; font-size: 0.8rem; margin-top: 4px; display: block;">{{ $message }}</span>
+                        @enderror
+                    </div>
                     </div>
 
                     <div class="form-group">
@@ -44,12 +58,20 @@
                             <option value="plin">Plin</option>
                             <option value="transferencia">Transferencia Bancaria</option>
                         </select>
+                    
+                        @error('metodo_pago')
+                            <span style="color: #dc2626; font-size: 0.8rem; margin-top: 4px; display: block;">{{ $message }}</span>
+                        @enderror
                     </div>
 
                     <div class="form-group">
                         <label>Observaciones</label>
                         <textarea name="observaciones" class="form-control" rows="2"
                             placeholder="Ej. Pago adelantado, billete roto, etc."></textarea>
+                    
+                        @error('observaciones')
+                            <span style="color: #dc2626; font-size: 0.8rem; margin-top: 4px; display: block;">{{ $message }}</span>
+                        @enderror
                     </div>
 
                     <div style="margin-top: 10px; display: flex; gap: 10px;">

@@ -7,27 +7,77 @@ use App\Models\Conductor;
 use App\Models\Propietario;
 use App\Models\Ruta;
 use App\Models\Tributo;
+use App\Http\Requests\StoreVehiculoRequest;
+use App\Http\Requests\UpdateVehiculoRequest;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 
 class VehiculoController extends Controller
 {
-    public function index()
+    public function index(Request $request)
     {
         /** @var \App\Models\User $user */
         $user = Auth::user();
-
-        $vehiculos = Vehiculo::where('empresa_id', $user->empresa_id)
+    
+        $query = Vehiculo::where('empresa_id', $user->empresa_id)
             ->with([
-                'conductor',
+                'conductor.user',
                 'propietario',
                 'rutas' => fn($q) => $q->where('vehiculo_rutas.activo', true),
-            ])
+            ]);
+    
+        // ── Búsqueda libre ────────────────────────────────────────
+        if ($request->filled('q')) {
+            $q = $request->q;
+            $query->where(function ($query) use ($q) {
+                $query->where('placa', 'like', "%{$q}%")
+                    ->orWhere('numero_flota', 'like', "%{$q}%");
+            });
+        }
+    
+        // ── Filtro por estado ─────────────────────────────────────
+        if ($request->filled('estado')) {
+            $query->where('estado', $request->estado);
+        }
+    
+        // ── Filtro por ruta ───────────────────────────────────────
+        if ($request->filled('ruta_id')) {
+            $query->whereHas('rutas', fn($r) =>
+                $r->where('rutas.id', $request->ruta_id)
+                ->where('vehiculo_rutas.activo', true)
+            );
+        }
+    
+        // Para el select de rutas en la vista
+        $rutas = \App\Models\Ruta::where('empresa_id', $user->empresa_id)
+            ->where('estado', 'activa')
+            ->orderBy('nombre')
+            ->get();
+    
+        $soat_vencidos = Vehiculo::where('empresa_id', $user->empresa_id)->where('estado', 'activo')->where('soat_vence', '<', now())->count();
+        $rev_vencidos = Vehiculo::where('empresa_id', $user->empresa_id)->where('estado', 'activo')->where('rev_tecnica_vence', '<', now())->count();
+        $tar_vencidos = Vehiculo::where('empresa_id', $user->empresa_id)->where('estado', 'activo')->where('tarjeta_prop_vence', '<', now())->count();
+        $lic_vencidas = Vehiculo::where('empresa_id', $user->empresa_id)->where('estado', 'activo')->whereHas('conductor', function($q) {
+            $q->where('licencia_vence', '<', now());
+        })->count();
+
+        $resumen = [
+            'total' => $query->clone()->count(),
+            'activos' => $query->clone()->where('estado', 'activo')->count(),
+            'docs_vencidos' => $soat_vencidos + $rev_vencidos + $tar_vencidos + $lic_vencidas,
+            'soat_vencidos' => $soat_vencidos,
+            'rev_vencidos' => $rev_vencidos,
+            'tar_vencidos' => $tar_vencidos,
+            'lic_vencidas' => $lic_vencidas,
+        ];
+
+        $vehiculos = $query
             ->orderBy('numero_flota')
             ->orderBy('placa')
-            ->paginate(20);
-
-        return view('admin.vehiculos.index', compact('vehiculos'));
+            ->paginate(20)
+            ->withQueryString();
+    
+        return view('admin.vehiculos.index', compact('vehiculos', 'rutas', 'resumen'));
     }
 
     public function create()
@@ -40,12 +90,12 @@ class VehiculoController extends Controller
         return view('admin.vehiculos.create', compact('conductores', 'propietarios', 'rutas'));
     }
 
-    public function store(Request $request)
+    public function store(StoreVehiculoRequest $request)
     {
         /** @var \App\Models\User $user */
         $user = Auth::user();
 
-        $data = $this->validar($request);
+        $data = $request->validated();
 
         $this->verificarRelaciones($data, $user->empresa_id);
 
@@ -69,7 +119,7 @@ class VehiculoController extends Controller
                 [
                     'empresa_id'   => $vehiculo->empresa_id,
                     'conductor_id' => $vehiculo->conductor_id,
-                    'monto'        => $user->empresa->tributo_diario ?? 24.00,
+                    'monto'        => $user->empresa->tributo_diario ?? 0.00,
                     'estado'       => 'pendiente',
                 ]
             );
@@ -114,14 +164,14 @@ class VehiculoController extends Controller
         ));
     }
 
-    public function update(Request $request, Vehiculo $vehiculo)
+    public function update(UpdateVehiculoRequest $request, Vehiculo $vehiculo)
     {
         $this->verificarEmpresa($vehiculo);
 
         /** @var \App\Models\User $user */
         $user = Auth::user();
 
-        $data = $this->validar($request, $vehiculo->id);
+        $data = $request->validated();
 
         $this->verificarRelaciones($data, $user->empresa_id);
 
@@ -162,33 +212,6 @@ class VehiculoController extends Controller
     }
 
     // ── Helpers ──────────────────────────────────────────────────
-
-    private function validar(Request $request, ?int $ignorarId = null): array
-    {
-        return $request->validate([
-            'placa'              => "required|string|max:8|unique:vehiculos,placa,{$ignorarId}",
-            'numero_flota'       => 'nullable|integer|min:1|max:9999',
-            'marca'              => 'nullable|string|max:60',
-            'modelo'             => 'nullable|string|max:60',
-            'color'              => 'nullable|string|max:40',
-            'anio'               => 'nullable|integer|min:1990|max:' . (date('Y') + 1),
-            'numero_motor'       => 'nullable|string|max:30',
-            'numero_chasis'      => 'nullable|string|max:30',
-            'propietario_id'     => 'nullable|exists:propietarios,id',
-            'conductor_id'       => 'nullable|exists:conductores,id',
-            'soat_vence'         => 'nullable|date',
-            'rev_tecnica_vence'  => 'nullable|date',
-            'tarjeta_prop_vence' => 'nullable|date',
-            'estado'             => 'required|in:activo,inactivo,sin_salir,mantenimiento',
-            'notas'              => 'nullable|string|max:500',
-            'rutas'              => 'nullable|array',
-            'rutas.*'            => 'exists:rutas,id',
-        ], [
-            'placa.required'  => 'La placa es obligatoria.',
-            'placa.unique'    => 'Esta placa ya está registrada.',
-            'estado.required' => 'El estado es obligatorio.',
-        ]);
-    }
 
     private function datosFormulario(int $empresaId): array
     {

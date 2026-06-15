@@ -21,7 +21,7 @@ return new class extends Migration
             $table->enum('plan', ['basico', 'pro', 'enterprise'])->default('basico');
             $table->boolean('activa')->default(true);
             $table->string('logo_path')->nullable();
-            $table->decimal('tributo_diario', 8, 2)->default(24.00); // monto tributo configurable
+            $table->decimal('tributo_diario', 8, 2)->default(0.00); // monto tributo configurable
             $table->timestamps();
             $table->softDeletes();
         });

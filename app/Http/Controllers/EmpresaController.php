@@ -4,6 +4,8 @@ namespace App\Http\Controllers;
 
 use App\Http\Controllers\Controller;
 use App\Models\Empresa;
+use App\Http\Requests\StoreEmpresaRequest;
+use App\Http\Requests\UpdateEmpresaRequest;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
 
@@ -37,18 +39,9 @@ class EmpresaController extends Controller
     /**
      * Guardar nueva empresa en la base de datos.
      */
-    public function store(Request $request)
+    public function store(StoreEmpresaRequest $request)
     {
-        $data = $request->validate([
-            'nombre'         => 'required|string|max:120',
-            'ruc'            => 'nullable|string|max:11|unique:empresas,ruc',
-            'razon_social'   => 'nullable|string|max:160',
-            'telefono'       => 'nullable|string|max:15',
-            'direccion'      => 'nullable|string|max:255',
-            'plan'           => 'required|in:basico,pro,enterprise',
-            'tributo_diario' => 'required|numeric|min:0',
-            'logo'           => 'nullable|image|mimes:jpeg,png,jpg|max:2048'
-        ]);
+        $data = $request->validated();
 
         if ($request->hasFile('logo')) {
             $data['logo_path'] = $request->file('logo')->store('logos', 'public');
@@ -56,7 +49,7 @@ class EmpresaController extends Controller
 
         Empresa::create($data);
 
-        return redirect()->route('empresas.index')
+        return redirect()->route('superadmin.empresas.index')
             ->with('success', 'Empresa registrada correctamente en el sistema.');
     }
 
@@ -71,18 +64,9 @@ class EmpresaController extends Controller
     /**
      * Actualizar los datos de la empresa.
      */
-    public function update(Request $request, Empresa $empresa)
+    public function update(UpdateEmpresaRequest $request, Empresa $empresa)
     {
-        $data = $request->validate([
-            'nombre'         => 'required|string|max:120',
-            'ruc'            => 'nullable|string|max:11|unique:empresas,ruc,' . $empresa->id,
-            'razon_social'   => 'nullable|string|max:160',
-            'telefono'       => 'nullable|string|max:15',
-            'direccion'      => 'nullable|string|max:255',
-            'plan'           => 'required|in:basico,pro,enterprise',
-            'tributo_diario' => 'required|numeric|min:0',
-            'logo'           => 'nullable|image|mimes:jpeg,png,jpg|max:2048'
-        ]);
+        $data = $request->validated();
 
         if ($request->hasFile('logo')) {
             // Borrar logo anterior si existe
@@ -94,7 +78,7 @@ class EmpresaController extends Controller
 
         $empresa->update($data);
 
-        return redirect()->route('empresas.index')
+        return redirect()->route('superadmin.empresas.index')
             ->with('success', 'Información de la empresa actualizada.');
     }
 
@@ -124,7 +108,7 @@ class EmpresaController extends Controller
 
         $empresa->delete();
 
-        return redirect()->route('empresas.index')
+        return redirect()->route('superadmin.empresas.index')
             ->with('success', 'La empresa ha sido eliminada del sistema.');
     }
 }

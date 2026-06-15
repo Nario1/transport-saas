@@ -4,6 +4,8 @@ namespace App\Http\Controllers;
 
 use App\Models\Ruta;
 use App\Models\RutaParadero;
+use App\Http\Requests\StoreRutaRequest;
+use App\Http\Requests\UpdateRutaRequest;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 
@@ -23,7 +25,12 @@ class RutaController extends Controller
             ->orderBy('nombre')
             ->paginate(20);
 
-        return view('admin.rutas.index', compact('rutas'));
+        $resumen = [
+            'total' => $rutas->total(),
+            'activas' => Ruta::where('empresa_id', $user->empresa_id)->where('estado', 'activa')->count()
+        ];
+
+        return view('admin.rutas.index', compact('rutas', 'resumen'));
     }
 
     public function create()
@@ -31,29 +38,12 @@ class RutaController extends Controller
         return view('admin.rutas.create');
     }
 
-    public function store(Request $request)
+    public function store(StoreRutaRequest $request)
     {
         /** @var \App\Models\User $user */
         $user = Auth::user();
 
-        $data = $request->validate([
-            'nombre'       => 'required|string|max:80',
-            'codigo'       => 'nullable|string|max:10',
-            'origen'       => 'required|string|max:120',
-            'destino'      => 'required|string|max:120',
-            'estado'       => 'required|in:activa,inactiva',
-            'duracion_min' => 'nullable|integer|min:1|max:999',
-            'descripcion'  => 'nullable|string|max:500',
-            // Paraderos opcionales al crear
-            'paraderos'          => 'nullable|array',
-            'paraderos.*.nombre' => 'required|string|max:120',
-            'paraderos.*.tipo'   => 'required|in:origen,intermedio,destino',
-        ], [
-            'nombre.required'  => 'El nombre de la ruta es obligatorio.',
-            'origen.required'  => 'El origen es obligatorio.',
-            'destino.required' => 'El destino es obligatorio.',
-            'estado.required'  => 'El estado es obligatorio.',
-        ]);
+        $data = $request->validated();
 
         $data['empresa_id'] = $user->empresa_id;
 
@@ -92,22 +82,11 @@ class RutaController extends Controller
         return view('admin.rutas.edit', compact('ruta'));
     }
 
-    public function update(Request $request, Ruta $ruta)
+    public function update(UpdateRutaRequest $request, Ruta $ruta)
     {
         $this->verificarEmpresa($ruta);
 
-        $data = $request->validate([
-            'nombre'       => 'required|string|max:80',
-            'codigo'       => 'nullable|string|max:10',
-            'origen'       => 'required|string|max:120',
-            'destino'      => 'required|string|max:120',
-            'estado'       => 'required|in:activa,inactiva',
-            'duracion_min' => 'nullable|integer|min:1|max:999',
-            'descripcion'  => 'nullable|string|max:500',
-            'paraderos'          => 'nullable|array',
-            'paraderos.*.nombre' => 'required|string|max:120',
-            'paraderos.*.tipo'   => 'required|in:origen,intermedio,destino',
-        ]);
+        $data = $request->validated();
 
         $paraderos = $data['paraderos'] ?? [];
         unset($data['paraderos']);
@@ -126,21 +105,29 @@ class RutaController extends Controller
     {
         $this->verificarEmpresa($ruta);
 
-        if ($ruta->vueltas()->count() > 0) {
-            return back()->with('error', 'No se puede eliminar una ruta que tiene vueltas registradas.');
+        try {
+            if ($ruta->vueltas()->count() > 0) {
+                return back()->with('error', 'No se puede eliminar una ruta que tiene vueltas registradas.');
+            }
+
+            // Fix: No bloquear por vehículos, solo advertir en el frontend (detach lo limpia)
+            /* 
+            if ($ruta->vehiculos()->wherePivot('activo', true)->count() > 0) {
+                return back()->with('error', 'No se puede eliminar una ruta que tiene vehículos asignados.');
+            }
+            */
+
+            // Desasignar vehículos del pivot y eliminar paraderos
+            $ruta->vehiculos()->detach();
+            $ruta->paraderos()->delete();
+            $ruta->delete();
+
+            return redirect()->route('rutas.index')
+                ->with('success', 'Ruta eliminada correctamente.');
+
+        } catch (\Exception $e) {
+            return back()->with('error', 'Ocurrió un error al intentar eliminar la ruta: ' . $e->getMessage());
         }
-
-        if ($ruta->vehiculosActivos()->count() > 0) {
-            return back()->with('error', 'No se puede eliminar una ruta que tiene vehículos asignados.');
-        }
-
-        // Desasignar vehículos del pivot y eliminar paraderos
-        $ruta->vehiculos()->detach();
-        $ruta->paraderos()->delete();
-        $ruta->delete();
-
-        return redirect()->route('rutas.index')
-            ->with('success', 'Ruta eliminada correctamente.');
     }
 
     // ── Paraderos (acciones individuales desde el show) ───────────

@@ -5,15 +5,16 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\SoftDeletes;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
-use OwenIt\Auditing\Contracts\Auditable; // la interfaz
-use OwenIt\Auditing\Auditable as AuditableTrait; // el trait
 use Illuminate\Support\Facades\Auth;
 
 use Carbon\Carbon;
 
+use App\Traits\AuditableWithEmpresa;
+use OwenIt\Auditing\Contracts\Auditable;
+
 class Vehiculo extends Model implements Auditable
 {
-    use SoftDeletes, AuditableTrait;
+    use HasFactory, AuditableWithEmpresa, SoftDeletes;
 
     protected $fillable = [
         'empresa_id', 'propietario_id', 'conductor_id',
@@ -60,6 +61,11 @@ class Vehiculo extends Model implements Auditable
     /** Label de flota: "Nro. 12" o null */
     public function getNumeroFlotaLabelAttribute(): ?string {
         return $this->numero_flota ? "Nro. {$this->numero_flota}" : null;
+    }
+
+    /** Marca y Modelo juntas */
+    public function getBrandModelAttribute(): string {
+        return trim("{$this->marca} {$this->modelo} {$this->anio}");
     }
 
     /** ¿Tiene tributo pagado hoy? */
